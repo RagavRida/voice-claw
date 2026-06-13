@@ -1304,7 +1304,7 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
                           <div className="relative border border-dashed border-slate-300 hover:border-slate-700 bg-slate-50/50 p-4 rounded-xl transition-all cursor-pointer text-center group">
                             <input
                               type="file"
-                              accept=".pdf"
+                              accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.webp"
                               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                               onChange={async (e) => {
                                 const file = e.target.files?.[0];

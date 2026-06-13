@@ -16,15 +16,22 @@ router = APIRouter()
 async def process_pdf_ingestion(resource_id: str, file_path: str, filename: str, agent_id: str):
     async with AsyncSessionLocal() as db:
         try:
-            logger.info(f"Starting background PDF ingestion for resource_id: {resource_id}, agent_id: {agent_id}")
+            logger.info(f"Starting background ingestion for resource_id: {resource_id}, agent_id: {agent_id}, file: {filename}")
             # 1. Read file bytes
             with open(file_path, "rb") as f:
                 file_bytes = f.read()
 
-            # 2. Extract text chunks using document intelligence service
-            chunks = await document_intelligence.extract_pdf(file_bytes, filename)
+            # 2. Extract text chunks using Sarvam Document Intelligence
+            ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+            image_exts = {"jpg", "jpeg", "png", "tiff", "tif", "bmp", "webp"}
+            
+            if ext in image_exts:
+                chunks = await document_intelligence.extract_image(file_bytes, filename)
+            else:
+                chunks = await document_intelligence.extract_pdf(file_bytes, filename)
+            
             if not chunks:
-                raise Exception("No text content could be extracted from this PDF document.")
+                raise Exception("No text content could be extracted from this document.")
 
             # 3. Create embeddings for chunks
             vectors = await embeddings.embed_chunks(chunks)
@@ -57,13 +64,23 @@ async def upload_pdf(
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        # Validate file type
+        # Validate file type — accept PDFs and images for Sarvam Document Intelligence
         filename = file.filename or "document.pdf"
-        is_pdf = filename.lower().endswith(".pdf") or (file.content_type and "pdf" in file.content_type.lower())
+        ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
         
-        if not is_pdf:
-            logger.error(f"Uploaded file {filename} is not a PDF (content_type: {file.content_type})")
-            raise HTTPException(status_code=400, detail={"error": "Invalid file", "detail": "Only PDF files are supported."})
+        pdf_exts = {"pdf"}
+        image_exts = {"jpg", "jpeg", "png", "tiff", "tif", "bmp", "webp"}
+        supported_exts = pdf_exts | image_exts
+        
+        is_pdf = ext in pdf_exts or (file.content_type and "pdf" in file.content_type.lower())
+        is_image = ext in image_exts or (file.content_type and file.content_type.lower().startswith("image/"))
+        
+        if not is_pdf and not is_image:
+            logger.error(f"Uploaded file {filename} is not supported (ext: {ext}, content_type: {file.content_type})")
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "Invalid file", "detail": f"Supported formats: PDF, {', '.join(sorted(image_exts)).upper()}"}
+            )
             
         # Clean agent_id
         if not agent_id or agent_id.strip() in ("", "null", "undefined"):
@@ -84,10 +101,11 @@ async def upload_pdf(
             buffer.write(content)
             
         # Create resource in database
+        resource_type = "pdf" if is_pdf else "image"
         db_resource = Resource(
             id=resource_id,
             agent_id=None if agent_id == "unassigned" else agent_id,
-            type="pdf",
+            type=resource_type,
             name=filename,
             status="processing",
             chunk_count=0

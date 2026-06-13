@@ -104,7 +104,16 @@ async def _sarvam_doc_digitization(file_bytes: bytes, filename: str) -> list[str
         logger.info(f"Got presigned upload URL for job {job_id}")
 
         # ── Step 3: Upload File to Presigned URL ─────────────────────────
-        content_type = "application/pdf" if filename.lower().endswith(".pdf") else "application/octet-stream"
+        ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+        mime_map = {
+            "pdf": "application/pdf",
+            "jpg": "image/jpeg", "jpeg": "image/jpeg",
+            "png": "image/png",
+            "tiff": "image/tiff", "tif": "image/tiff",
+            "bmp": "image/bmp",
+            "webp": "image/webp",
+        }
+        content_type = mime_map.get(ext, "application/octet-stream")
         put_resp = await client.put(
             presigned_url,
             content=file_bytes,
@@ -255,3 +264,17 @@ async def extract_pdf(file_bytes: bytes, filename: str) -> list[str]:
             "Falling back to local PDF extraction."
         )
         return _extract_pdf_local(file_bytes, filename)
+
+
+async def extract_image(file_bytes: bytes, filename: str) -> list[str]:
+    """
+    Extract text from images (JPG, PNG, TIFF, etc.) using Sarvam Document Intelligence.
+    No local fallback — images require OCR which only Sarvam provides.
+    """
+    try:
+        logger.info(f"Attempting Sarvam Document Digitization (image OCR) for {filename}")
+        return await _sarvam_doc_digitization(file_bytes, filename)
+    except Exception as e:
+        logger.error(f"Sarvam Document Digitization failed for image {filename}: {e}")
+        raise Exception(f"Image text extraction failed for {filename}: {e}")
+
