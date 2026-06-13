@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     SARVAM_BASE_URL: str = "https://api.sarvam.ai"
     SARVAM_STT_MODEL: str = "saarika:v2.5"
     SARVAM_TTS_MODEL: str = "bulbul:v3"
-    SARVAM_TTS_SPEAKER: str = "meera"
+    SARVAM_TTS_SPEAKER: str = "priya"
     SARVAM_TTS_PACE: float = 1.0  # Speed: 0.5 to 2.0
     SARVAM_TTS_TEMPERATURE: float = 0.6  # Expressiveness: 0.01 to 1.0 (v3 only)
     SARVAM_TTS_SAMPLE_RATE: int = 22050  # Audio quality (Hz)
