@@ -21,6 +21,13 @@ import {
   X,
   FileText,
   Globe,
+  Calendar,
+  ShoppingBag,
+  Settings,
+  Link,
+  Plus,
+  ExternalLink,
+  Sliders,
 } from "lucide-react";
 
 // ─── API URL HELPER ────────────────────────────────────────────────────────────
@@ -109,6 +116,17 @@ export default function App() {
   const [primaryLanguage, setPrimaryLanguage] = useState("");
   const [topFaqs, setTopFaqs] = useState<string[]>([]);
   const [restrictions, setRestrictions] = useState("");
+
+  // Integrations / Connectors state
+  const [isCalendarConnected, setIsCalendarConnected] = useState(false);
+  const [calendarEmail, setCalendarEmail] = useState("");
+  const [isTwilioConnected, setIsTwilioConnected] = useState(false);
+  const [twilioPhone, setTwilioPhone] = useState("");
+  const [isShopifyConnected, setIsShopifyConnected] = useState(false);
+  const [shopifyStoreUrl, setShopifyStoreUrl] = useState("");
+  const [isHubspotConnected, setIsHubspotConnected] = useState(false);
+  const [hubspotApiKey, setHubspotApiKey] = useState("");
+  const [showConfigFor, setShowConfigFor] = useState<string | null>(null);
 
   // Fade animation keys — incrementing forces React to remount the element,
   // replaying the CSS keyframe animation on each field update.
@@ -252,55 +270,61 @@ export default function App() {
 
     // Business type: keyword matching
     if (!businessType) {
-      const types: [string, string][] = [
-        ["restaurant", "Restaurant"],
-        ["hotel", "Hotel"],
-        ["clinic", "Medical Clinic"],
-        ["hospital", "Hospital"],
-        ["pharmacy", "Pharmacy"],
-        ["shop", "Retail Shop"],
-        ["store", "Retail Store"],
-        ["salon", "Salon & Beauty"],
-        ["bakery", "Bakery"],
-        ["café", "Café"],
-        ["cafe", "Café"],
-        ["gym", "Gym / Fitness"],
-        ["school", "School"],
-        ["college", "Educational Institution"],
-        ["laundry", "Laundry Service"],
-        ["supermarket", "Supermarket"],
-        ["electronics", "Electronics Shop"],
-      ];
-      for (const [kw, label] of types) {
-        if (low.includes(kw)) {
-          setBusinessType(label);
-          triggerAnim("business_type");
-          break;
+      const hasConfirmation = /(?:got it|great|perfect|wonderful|noted|sounds|sure|cool|lovely)/i.test(low);
+      if (hasConfirmation) {
+        const types: [string, string][] = [
+          ["restaurant", "Restaurant"],
+          ["hotel", "Hotel"],
+          ["clinic", "Medical Clinic"],
+          ["hospital", "Hospital"],
+          ["pharmacy", "Pharmacy"],
+          ["shop", "Retail Shop"],
+          ["store", "Retail Store"],
+          ["salon", "Salon & Beauty"],
+          ["bakery", "Bakery"],
+          ["café", "Café"],
+          ["cafe", "Café"],
+          ["gym", "Gym / Fitness"],
+          ["school", "School"],
+          ["college", "Educational Institution"],
+          ["laundry", "Laundry Service"],
+          ["supermarket", "Supermarket"],
+          ["electronics", "Electronics Shop"],
+        ];
+        for (const [kw, label] of types) {
+          if (low.includes(kw)) {
+            setBusinessType(label);
+            triggerAnim("business_type");
+            break;
+          }
         }
       }
     }
 
     // Primary language: keyword matching
     if (!primaryLanguage) {
-      const langs: [string, string][] = [
-        ["telugu", "Telugu (te-IN)"],
-        ["hindi", "Hindi (hi-IN)"],
-        ["tamil", "Tamil (ta-IN)"],
-        ["kannada", "Kannada (kn-IN)"],
-        ["malayalam", "Malayalam (ml-IN)"],
-        ["english", "English (en-IN)"],
-        ["marathi", "Marathi (mr-IN)"],
-        ["bengali", "Bengali (bn-IN)"],
-        ["gujarati", "Gujarati (gu-IN)"],
-        ["punjabi", "Punjabi (pa-IN)"],
-        ["odia", "Odia (or-IN)"],
-        ["assamese", "Assamese (as-IN)"],
-      ];
-      for (const [lang, label] of langs) {
-        if (low.includes(lang)) {
-          setPrimaryLanguage(label);
-          triggerAnim("primary_language");
-          break;
+      const hasConfirmation = /(?:got it|great|perfect|wonderful|noted|sounds|sure|cool|speak|use|language)/i.test(low);
+      if (hasConfirmation) {
+        const langs: [string, string][] = [
+          ["telugu", "Telugu (te-IN)"],
+          ["hindi", "Hindi (hi-IN)"],
+          ["tamil", "Tamil (ta-IN)"],
+          ["kannada", "Kannada (kn-IN)"],
+          ["malayalam", "Malayalam (ml-IN)"],
+          ["english", "English (en-IN)"],
+          ["marathi", "Marathi (mr-IN)"],
+          ["bengali", "Bengali (bn-IN)"],
+          ["gujarati", "Gujarati (gu-IN)"],
+          ["punjabi", "Punjabi (pa-IN)"],
+          ["odia", "Odia (or-IN)"],
+          ["assamese", "Assamese (as-IN)"],
+        ];
+        for (const [lang, label] of langs) {
+          if (low.includes(lang)) {
+            setPrimaryLanguage(label);
+            triggerAnim("primary_language");
+            break;
+          }
         }
       }
     }
@@ -472,7 +496,7 @@ Ask questions in this order, one at a time, waiting for each answer:
 5. How do you want the agent to greet customers?
 6. Is there anything the agent should never say or do?
 
-After all 6 answers, output a JSON block wrapped in <config></config> tags with this structure:
+After all 6 answers, FIRST output the JSON config block wrapped in <config></config> tags:
 <config>
 {
   "business_name": "...",
@@ -483,6 +507,22 @@ After all 6 answers, output a JSON block wrapped in <config></config> tags with 
   "restrictions": "..."
 }
 </config>
+
+THEN, based on what you learned about their business, recommend relevant tools/integrations that would help their voice agent. Choose from these available connectors:
+- "calendar" — Google Calendar (for appointment-based businesses like clinics, salons, hospitals, consultants)
+- "whatsapp" — WhatsApp / Twilio (for customer notifications, order updates, confirmations)
+- "shopify" — Shopify / Catalog (for businesses selling products — shops, restaurants with menus, e-commerce)
+- "hubspot" — HubSpot / CRM (for businesses tracking leads and customer relationships)
+
+Output your recommendations as a <tools> tag listing relevant tool IDs, like:
+<tools>calendar,whatsapp</tools>
+
+Then write a brief, friendly message like:
+"Based on your business, I'd recommend connecting Google Calendar for appointment booking and WhatsApp for customer notifications. Would you like to enable these?"
+
+If the user says yes/sure/okay to the tool suggestions, output:
+<enable_tools>calendar,whatsapp</enable_tools>
+with whatever tools they agreed to.
 
 Keep every message under 2 sentences. Be warm and conversational. Use simple English. Never ask two questions at once.`,
           messages: newHistory,
@@ -496,9 +536,32 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
       // Parse every assistant response for field updates
       parseConfigFromMessage(rawText);
 
-      // Strip <config> block from the displayed message
+      // Parse tool suggestions — auto-highlight recommended connectors
+      const toolsSuggestMatch = rawText.match(/<tools>([\s\S]*?)<\/tools>/);
+      if (toolsSuggestMatch) {
+        const suggested = toolsSuggestMatch[1].split(",").map((t: string) => t.trim().toLowerCase());
+        // Visually highlight suggested tools (but don't fully connect yet — wait for user confirmation)
+        if (suggested.includes("calendar")) { setIsCalendarConnected(false); setShowConfigFor("calendar"); }
+        if (suggested.includes("whatsapp")) { setIsTwilioConnected(false); setShowConfigFor("twilio"); }
+        if (suggested.includes("shopify")) { setIsShopifyConnected(false); setShowConfigFor("shopify"); }
+        if (suggested.includes("hubspot")) { setIsHubspotConnected(false); setShowConfigFor("hubspot"); }
+      }
+
+      // Parse tool enablement — user confirmed, auto-connect
+      const enableMatch = rawText.match(/<enable_tools>([\s\S]*?)<\/enable_tools>/);
+      if (enableMatch) {
+        const enabled = enableMatch[1].split(",").map((t: string) => t.trim().toLowerCase());
+        if (enabled.includes("calendar")) { setIsCalendarConnected(true); showToast("📅 Google Calendar connected!", "success"); }
+        if (enabled.includes("whatsapp")) { setIsTwilioConnected(true); showToast("💬 WhatsApp connected!", "success"); }
+        if (enabled.includes("shopify")) { setIsShopifyConnected(true); showToast("🛍️ Shopify connected!", "success"); }
+        if (enabled.includes("hubspot")) { setIsHubspotConnected(true); showToast("🔗 HubSpot connected!", "success"); }
+      }
+
+      // Strip <config>, <tools>, and <enable_tools> blocks from the displayed message
       const cleanText = rawText
         .replace(/<config>[\s\S]*?<\/config>/g, "")
+        .replace(/<tools>[\s\S]*?<\/tools>/g, "")
+        .replace(/<enable_tools>[\s\S]*?<\/enable_tools>/g, "")
         .trim();
 
       setConversationHistory((prev) => [
@@ -582,7 +645,7 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
       });
       if (!response.ok) throw new Error("Upload failed");
       const data = await response.json();
-      handleDocumentWidgetUploaded(file.name, data.file_id);
+      handleDocumentWidgetUploaded(file.name, data.resource_id || data.file_id);
     } catch {
       injectAIMessage(
         "That didn't upload correctly. Try again or paste a URL instead."
@@ -605,14 +668,12 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           business_name: businessName,
-          business_type: businessType,
-          primary_language: primaryLanguage,
-          greeting: greeting || undefined,
-          restrictions,
-          top_faqs: topFaqs,
-          resource_ids: [...uploadedResourceIds, ...ingestedUrlsList],
-          files: uploadedFilesList,
-          urls: ingestedUrlsList,
+          business_type: businessType || "General",
+          primary_language: primaryLanguage || "en-IN",
+          greeting: greeting || "Namaste, how can I help you?",
+          restrictions: restrictions || "",
+          top_faqs: topFaqs.length > 0 ? topFaqs : ["General inquiry"],
+          resource_ids: [...uploadedResourceIds],
         }),
       });
       if (!response.ok) throw new Error("Failed to configure agent runtime.");
@@ -770,7 +831,9 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
     try {
       // 1. STT
       const fd = new FormData();
-      fd.append("audio", audioBlob);
+      // Determine extension from blob mime type for Sarvam format detection
+      const ext = audioBlob.type.includes("mp4") ? "mp4" : "webm";
+      fd.append("audio", audioBlob, `recording.${ext}`);
       fd.append("agent_id", activeAgentId || "demo123");
       const sttRes = await fetch(getApiUrl("/api/stt"), {
         method: "POST",
@@ -840,7 +903,7 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
       const ttsRes = await fetch(getApiUrl("/api/tts"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: answer_text, source_lang: language }),
+        body: JSON.stringify({ text: answer_text, source_lang: language, agent_id: activeAgentId || "demo123" }),
       });
       if (!ttsRes.ok) throw new Error("TTS failed");
 
@@ -1424,133 +1487,221 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
                 </div>
               </div>
 
-              {/* ── RIGHT PANEL: VIRTUAL AGENT BOARD (4 cols / 40%) ──────────── */}
+              {/* ── RIGHT PANEL: CONNECTORS & INTEGRATIONS ──────────────── */}
               <div
-                id="live-config-preview-panel"
-                className="hidden md:flex md:col-span-4 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex-col justify-between h-[680px]"
+                id="connectors-panel"
+                className="hidden md:flex md:col-span-4 bg-white border border-slate-200 rounded-2xl shadow-sm flex-col h-[680px] overflow-hidden"
               >
-                <div>
-                  <div className="flex items-center gap-2 pb-4 border-b border-slate-100">
-                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-800 shrink-0">
-                      <Mic className="w-4 h-4" />
+                {/* Panel Header */}
+                <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-4 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-white/10 backdrop-blur flex items-center justify-center shrink-0">
+                      <Sliders className="w-4.5 h-4.5 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-extrabold text-slate-900">
-                        Virtual Agent Board
+                      <h3 className="text-sm font-bold text-white tracking-tight">
+                        Connectors & Tools
                       </h3>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                        Live configuration feed
+                      <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
+                        Integrate your business stack
                       </p>
                     </div>
-                  </div>
-
-                  <div className="mt-6 space-y-5 select-text">
-                    {/* BUSINESS NAME */}
-                    <div>
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-slate-400">
-                        Business Name
-                      </p>
-                      {/* key change → remount → CSS fade-in replays */}
-                      <p
-                        key={`bn-${animKeys.business_name}`}
-                        className={`text-base font-extrabold mt-0.5 field-fade-in ${
-                          businessName
-                            ? "text-slate-900"
-                            : "text-slate-300 italic text-sm"
-                        }`}
-                      >
-                        {businessName || "Not set yet"}
-                      </p>
-                    </div>
-
-                    {/* MERCHANT CATEGORY / TYPE */}
-                    <div>
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-slate-400">
-                        Merchant Category / Type
-                      </p>
-                      <p
-                        key={`bt-${animKeys.business_type}`}
-                        className={`text-xs font-semibold mt-0.5 field-fade-in ${
-                          businessType
-                            ? "text-slate-800"
-                            : "text-slate-300 italic"
-                        }`}
-                      >
-                        {businessType || "Not set yet"}
-                      </p>
-                    </div>
-
-                    {/* PRIMARY LANGUAGE */}
-                    <div>
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-slate-400">
-                        Primary Language
-                      </p>
-                      <p
-                        key={`pl-${animKeys.primary_language}`}
-                        className={`text-xs font-semibold mt-0.5 field-fade-in ${
-                          primaryLanguage
-                            ? "text-slate-800"
-                            : "text-slate-300 italic"
-                        }`}
-                      >
-                        {primaryLanguage || "Not set yet"}
-                      </p>
-                    </div>
-
-                    {/* ACTIVE WELCOME GREETING */}
-                    <div>
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-slate-400">
-                        Active Welcome Greeting
-                      </p>
-                      <p
-                        key={`gr-${animKeys.greeting}`}
-                        className={`text-xs font-medium leading-relaxed italic mt-1 bg-slate-50 p-2.5 rounded-lg border border-slate-100 field-fade-in ${
-                          greeting ? "text-slate-700" : "text-slate-300"
-                        }`}
-                      >
-                        "{greeting || "Namaste, how can I help you?"}"
-                      </p>
-                    </div>
-
-                    {/* TOP FAQS */}
-                    {topFaqs.length > 0 && (
-                      <div>
-                        <p className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">
-                          Top Customer Queries
-                        </p>
-                        <div className="space-y-1">
-                          {topFaqs.map((f, i) => (
-                            <div
-                              key={i}
-                              className="text-[11px] text-slate-600 bg-slate-50 border border-slate-100 rounded px-2 py-1 truncate"
-                            >
-                              • {f}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* GUARDRAILS */}
-                    {restrictions && (
-                      <div>
-                        <p className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">
-                          Guardrails / Restrictions
-                        </p>
-                        <p className="text-[11px] leading-relaxed text-rose-800 bg-rose-50/50 border border-rose-100 rounded px-2.5 py-1.5">
-                          {restrictions}
-                        </p>
-                      </div>
-                    )}
                   </div>
                 </div>
 
-                {/* Bottom resource counter */}
-                <div className="mt-4 pt-4 border-t border-slate-100 bg-slate-50/50 -mx-6 -mb-6 p-6 rounded-b-2xl shrink-0">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Loaded business resources:</span>
-                    <span className="font-extrabold text-slate-800">
-                      {totalResources} items
+                {/* Scrollable Connector Cards */}
+                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+
+                  {/* ─── Google Calendar ────────────────────────────────────── */}
+                  <div className={`rounded-xl border transition-all duration-200 ${isCalendarConnected ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                    <div className="flex items-center justify-between px-4 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isCalendarConnected ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                          <Calendar className="w-4.5 h-4.5" />
+                        </div>
+                        <div>
+                          <p className="text-[13px] font-semibold text-slate-800">Google Calendar</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">Appointment booking & scheduling</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`w-1.5 h-1.5 rounded-full ${isCalendarConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`} />
+                        <button
+                          onClick={() => { setIsCalendarConnected(!isCalendarConnected); if (!isCalendarConnected) setShowConfigFor('calendar'); }}
+                          className={`relative w-10 h-[22px] rounded-full transition-colors duration-200 cursor-pointer ${isCalendarConnected ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                        >
+                          <span className={`absolute top-[3px] left-[3px] w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isCalendarConnected ? 'translate-x-[18px]' : ''}`} />
+                        </button>
+                      </div>
+                    </div>
+                    {/* Config Expand */}
+                    {showConfigFor === 'calendar' && isCalendarConnected && (
+                      <div className="px-4 pb-4 pt-1 border-t border-emerald-100">
+                        <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1.5">Calendar Email</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            value={calendarEmail}
+                            onChange={(e) => setCalendarEmail(e.target.value)}
+                            placeholder="you@gmail.com"
+                            className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition-all"
+                          />
+                          <button
+                            onClick={() => { showToast("Google Calendar linked!", "success"); setShowConfigFor(null); }}
+                            className="px-3 py-2 text-[11px] font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors cursor-pointer"
+                          >
+                            Link
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ─── WhatsApp / Twilio ──────────────────────────────────── */}
+                  <div className={`rounded-xl border transition-all duration-200 ${isTwilioConnected ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                    <div className="flex items-center justify-between px-4 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isTwilioConnected ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                          <Send className="w-4.5 h-4.5" />
+                        </div>
+                        <div>
+                          <p className="text-[13px] font-semibold text-slate-800">WhatsApp / Twilio</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">SMS & WhatsApp notifications</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`w-1.5 h-1.5 rounded-full ${isTwilioConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`} />
+                        <button
+                          onClick={() => { setIsTwilioConnected(!isTwilioConnected); if (!isTwilioConnected) setShowConfigFor('twilio'); }}
+                          className={`relative w-10 h-[22px] rounded-full transition-colors duration-200 cursor-pointer ${isTwilioConnected ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                        >
+                          <span className={`absolute top-[3px] left-[3px] w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isTwilioConnected ? 'translate-x-[18px]' : ''}`} />
+                        </button>
+                      </div>
+                    </div>
+                    {showConfigFor === 'twilio' && isTwilioConnected && (
+                      <div className="px-4 pb-4 pt-1 border-t border-emerald-100">
+                        <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1.5">WhatsApp Business Number</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="tel"
+                            value={twilioPhone}
+                            onChange={(e) => setTwilioPhone(e.target.value)}
+                            placeholder="+91 98765 43210"
+                            className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition-all"
+                          />
+                          <button
+                            onClick={() => { showToast("WhatsApp connected!", "success"); setShowConfigFor(null); }}
+                            className="px-3 py-2 text-[11px] font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors cursor-pointer"
+                          >
+                            Link
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ─── Shopify / Catalog ──────────────────────────────────── */}
+                  <div className={`rounded-xl border transition-all duration-200 ${isShopifyConnected ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                    <div className="flex items-center justify-between px-4 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isShopifyConnected ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                          <ShoppingBag className="w-4.5 h-4.5" />
+                        </div>
+                        <div>
+                          <p className="text-[13px] font-semibold text-slate-800">Shopify / Catalog</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">Sync products & inventory</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`w-1.5 h-1.5 rounded-full ${isShopifyConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`} />
+                        <button
+                          onClick={() => { setIsShopifyConnected(!isShopifyConnected); if (!isShopifyConnected) setShowConfigFor('shopify'); }}
+                          className={`relative w-10 h-[22px] rounded-full transition-colors duration-200 cursor-pointer ${isShopifyConnected ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                        >
+                          <span className={`absolute top-[3px] left-[3px] w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isShopifyConnected ? 'translate-x-[18px]' : ''}`} />
+                        </button>
+                      </div>
+                    </div>
+                    {showConfigFor === 'shopify' && isShopifyConnected && (
+                      <div className="px-4 pb-4 pt-1 border-t border-emerald-100">
+                        <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1.5">Shopify Store URL</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="url"
+                            value={shopifyStoreUrl}
+                            onChange={(e) => setShopifyStoreUrl(e.target.value)}
+                            placeholder="your-store.myshopify.com"
+                            className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition-all"
+                          />
+                          <button
+                            onClick={() => { showToast("Shopify synced!", "success"); setShowConfigFor(null); }}
+                            className="px-3 py-2 text-[11px] font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors cursor-pointer"
+                          >
+                            Sync
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ─── HubSpot / CRM ─────────────────────────────────────── */}
+                  <div className={`rounded-xl border transition-all duration-200 ${isHubspotConnected ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                    <div className="flex items-center justify-between px-4 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isHubspotConnected ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                          <Link className="w-4.5 h-4.5" />
+                        </div>
+                        <div>
+                          <p className="text-[13px] font-semibold text-slate-800">HubSpot / CRM</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">Sync customer contacts</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`w-1.5 h-1.5 rounded-full ${isHubspotConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`} />
+                        <button
+                          onClick={() => { setIsHubspotConnected(!isHubspotConnected); if (!isHubspotConnected) setShowConfigFor('hubspot'); }}
+                          className={`relative w-10 h-[22px] rounded-full transition-colors duration-200 cursor-pointer ${isHubspotConnected ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                        >
+                          <span className={`absolute top-[3px] left-[3px] w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isHubspotConnected ? 'translate-x-[18px]' : ''}`} />
+                        </button>
+                      </div>
+                    </div>
+                    {showConfigFor === 'hubspot' && isHubspotConnected && (
+                      <div className="px-4 pb-4 pt-1 border-t border-emerald-100">
+                        <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1.5">HubSpot API Key</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="password"
+                            value={hubspotApiKey}
+                            onChange={(e) => setHubspotApiKey(e.target.value)}
+                            placeholder="pat-na1-xxxxxxxx"
+                            className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition-all"
+                          />
+                          <button
+                            onClick={() => { showToast("HubSpot connected!", "success"); setShowConfigFor(null); }}
+                            className="px-3 py-2 text-[11px] font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors cursor-pointer"
+                          >
+                            Connect
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ─── Add More Connector CTA ────────────────────────────── */}
+                  <button className="w-full rounded-xl border-2 border-dashed border-slate-200 hover:border-slate-400 py-4 flex items-center justify-center gap-2 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-all cursor-pointer group">
+                    <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                    Add Custom Integration
+                  </button>
+                </div>
+
+                {/* Bottom status bar */}
+                <div className="px-5 py-3.5 border-t border-slate-100 bg-slate-50/80 shrink-0">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">Active connectors</span>
+                    <span className="font-bold text-slate-700">
+                      {[isCalendarConnected, isTwilioConnected, isShopifyConnected, isHubspotConnected].filter(Boolean).length} / 4
                     </span>
                   </div>
                 </div>

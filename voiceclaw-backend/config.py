@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     # ── API Keys ──
     SARVAM_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
     FIRECRAWL_API_KEY: str = ""
 
     # ── Infrastructure ──

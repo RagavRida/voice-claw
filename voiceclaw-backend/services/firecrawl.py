@@ -26,7 +26,12 @@ def chunk_text(text: str, chunk_size: int = None, overlap: int = None) -> list[s
 
 def sync_scrape(api_key: str, url: str) -> str:
     app = FirecrawlApp(api_key=api_key)
-    response = app.scrape_url(url, params={"formats": ["markdown"]})
+    # Firecrawl v2+ SDK: formats is a direct keyword argument, not wrapped in params
+    try:
+        response = app.scrape_url(url, formats=["markdown"])
+    except TypeError:
+        # Fallback for older SDK versions that use params
+        response = app.scrape_url(url, params={"formats": ["markdown"]})
     
     markdown_content = ""
     if response:

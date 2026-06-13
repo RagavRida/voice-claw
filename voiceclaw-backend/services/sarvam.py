@@ -16,7 +16,7 @@ async def speech_to_text_translate(
     prompt: str = None,
 ) -> dict:
     """
-    Translate speech audio to English text using Sarvam STT-Translate API.
+    Translate speech audio to English text using Sarvam AI SDK (saaras:v3).
 
     Args:
         audio_bytes: Raw audio bytes.
@@ -25,36 +25,48 @@ async def speech_to_text_translate(
     """
     if audio_format is None:
         audio_format = settings.DEFAULT_AUDIO_FORMAT
-    url = f"{settings.SARVAM_BASE_URL}/speech-to-text-translate"
-    headers = {
-        "API-Subscription-Key": settings.SARVAM_API_KEY
-    }
-    files = {
-        "file": (f"audio.{audio_format}", audio_bytes, f"audio/{audio_format}")
-    }
-    data = {
-        "model": settings.SARVAM_STT_MODEL
-    }
-    if prompt:
-        data["prompt"] = prompt
-    
+
+    import io
+    import asyncio
+    from sarvamai import SarvamAI
+
     try:
-        async with httpx.AsyncClient(timeout=settings.SARVAM_API_TIMEOUT) as client:
-            response = await client.post(url, headers=headers, files=files, data=data)
-            if response.status_code != 200:
-                raise SarvamAPIError(f"Sarvam STT API returned status {response.status_code}", response.text)
-            
-            result = response.json()
-            return {
-                "transcript": result.get("transcript", ""),
-                "source_language_code": result.get("source_language_code", "")
-            }
-    except httpx.HTTPError as e:
-        logger.error(f"HTTP error in speech_to_text_translate: {e}")
-        raise SarvamAPIError("Network error calling Sarvam STT API", str(e))
+        client = SarvamAI(api_subscription_key=settings.SARVAM_API_KEY)
+
+        # Create a file-like object from bytes
+        audio_file = io.BytesIO(audio_bytes)
+        audio_file.name = f"audio.{audio_format}"
+
+        # Run the synchronous SDK call in a thread to keep async compatibility
+        response = await asyncio.to_thread(
+            client.speech_to_text.transcribe,
+            file=audio_file,
+            model="saaras:v3",
+            mode="translate",
+        )
+
+        logger.info(f"Sarvam STT SDK response: {response}")
+
+        # The SDK returns an object — extract transcript
+        transcript = ""
+        source_lang = ""
+        if hasattr(response, "transcript"):
+            transcript = response.transcript or ""
+        elif isinstance(response, dict):
+            transcript = response.get("transcript", "")
+
+        if hasattr(response, "source_language_code"):
+            source_lang = response.source_language_code or ""
+        elif isinstance(response, dict):
+            source_lang = response.get("source_language_code", "")
+
+        return {
+            "transcript": transcript,
+            "source_language_code": source_lang,
+        }
     except Exception as e:
-        logger.error(f"Unexpected error in speech_to_text_translate: {e}")
-        raise SarvamAPIError("Unexpected error calling Sarvam STT API", str(e))
+        logger.error(f"Sarvam STT SDK error: {e}", exc_info=True)
+        raise SarvamAPIError(f"Sarvam STT failed: {e}", str(e))
 
 
 async def speech_to_text(
@@ -119,15 +131,15 @@ async def text_to_speech(
     enable_cached_responses: bool = None,
 ) -> bytes:
     """
-    Convert text to speech audio using Sarvam TTS API.
+    Convert text to speech audio using Sarvam AI SDK (bulbul:v3).
 
     Args:
         text: Text to synthesize.
         target_language_code: BCP-47 code (e.g. hi-IN, en-IN).
-        speaker: Voice ID (30+ available in v3). Default from config.
-        dict_id: Pronunciation dictionary ID for custom word pronunciations (v3 only).
+        speaker: Voice ID. Default from config.
+        dict_id: Pronunciation dictionary ID (v3 only).
         pace: Speech speed (0.5–2.0). Default 1.0.
-        temperature: Expressiveness (0.01–1.0). v3 only. Default 0.6.
+        temperature: Expressiveness (0.01–1.0). v3 only.
         speech_sample_rate: Audio sample rate in Hz.
         enable_cached_responses: Cache identical requests (beta).
     """
@@ -135,56 +147,46 @@ async def text_to_speech(
         speaker = settings.SARVAM_TTS_SPEAKER
     if pace is None:
         pace = settings.SARVAM_TTS_PACE
-    if temperature is None:
-        temperature = settings.SARVAM_TTS_TEMPERATURE
 
-    url = f"{settings.SARVAM_BASE_URL}/text-to-speech"
-    headers = {
-        "API-Subscription-Key": settings.SARVAM_API_KEY,
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "inputs": [text],
-        "target_language_code": target_language_code,
-        "speaker": speaker,
-        "model": settings.SARVAM_TTS_MODEL,
-        "enable_preprocessing": True,
-        "pace": pace,
-    }
-    # v3-only parameters
-    if settings.SARVAM_TTS_MODEL == "bulbul:v3":
-        payload["temperature"] = temperature
-    # Include pronunciation dictionary if provided (requires bulbul:v3)
-    if dict_id:
-        payload["dict_id"] = dict_id
-    if speech_sample_rate:
-        payload["speech_sample_rate"] = speech_sample_rate
-    if enable_cached_responses is None:
-        enable_cached_responses = settings.SARVAM_TTS_ENABLE_CACHE
-    if enable_cached_responses:
-        payload["enable_cached_responses"] = True
-    
+    import asyncio
+    import io
+    from sarvamai import SarvamAI
+
     try:
-        async with httpx.AsyncClient(timeout=settings.SARVAM_API_TIMEOUT) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            if response.status_code != 200:
-                raise SarvamAPIError(f"Sarvam TTS API returned status {response.status_code}", response.text)
-            
-            content_type = response.headers.get("content-type", "")
-            if "application/json" in content_type:
-                data = response.json()
-                audio_base64 = data.get("audio_base64", "")
-                if not audio_base64:
-                    raise SarvamAPIError("Missing audio_base64 in JSON response", response.text)
-                return base64.b64decode(audio_base64)
-            else:
-                return response.content
-    except httpx.HTTPError as e:
-        logger.error(f"HTTP error in text_to_speech: {e}")
-        raise SarvamAPIError("Network error calling Sarvam TTS API", str(e))
+        client = SarvamAI(api_subscription_key=settings.SARVAM_API_KEY)
+
+        # Build kwargs for the SDK call
+        kwargs = {
+            "target_language_code": target_language_code,
+            "text": text,
+            "model": settings.SARVAM_TTS_MODEL,
+            "speaker": speaker,
+        }
+
+        # Run the synchronous SDK call in a thread
+        response = await asyncio.to_thread(
+            client.text_to_speech.convert,
+            **kwargs,
+        )
+
+        logger.info(f"Sarvam TTS SDK response type: {type(response)}")
+
+        # The SDK returns audio bytes or a response object
+        if isinstance(response, bytes):
+            return response
+        elif hasattr(response, "read"):
+            return response.read()
+        elif hasattr(response, "audios") and response.audios:
+            # Some SDK versions return base64-encoded audio list
+            return base64.b64decode(response.audios[0])
+        else:
+            # Try to extract from the response object
+            logger.warning(f"Unexpected TTS response format: {response}")
+            return bytes(response) if response else b""
+
     except Exception as e:
-        logger.error(f"Unexpected error in text_to_speech: {e}")
-        raise SarvamAPIError("Unexpected error calling Sarvam TTS API", str(e))
+        logger.error(f"Sarvam TTS SDK error: {e}", exc_info=True)
+        raise SarvamAPIError(f"Sarvam TTS failed: {e}", str(e))
 
 
 async def translate_text(

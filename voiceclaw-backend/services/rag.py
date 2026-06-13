@@ -11,6 +11,35 @@ logger = logging.getLogger("rag_service")
 class RAGError(Exception):
     pass
 
+async def _query_via_groq(system_prompt: str, messages: list[dict]) -> str:
+    """Use Groq API (OpenAI-compatible) for chat completion."""
+    groq_key = settings.GROQ_API_KEY
+    if not groq_key:
+        raise RAGError("GROQ_API_KEY not set")
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {groq_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "llama-3.3-70b-versatile",
+                "messages": messages,
+                "max_tokens": settings.RAG_MAX_TOKENS,
+                "temperature": settings.RAG_TEMPERATURE,
+            },
+        )
+        if response.status_code != 200:
+            raise RAGError(f"Groq API error {response.status_code}: {response.text[:200]}")
+
+        data = response.json()
+        answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if not answer:
+            raise RAGError("Empty response from Groq API.")
+        return answer.strip()
+
 async def _query_via_gemini(system_prompt: str, messages: list[dict], query_text: str) -> str:
     """Use Google Gemini API for chat completion."""
     import asyncio
@@ -111,13 +140,24 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
         messages.extend(history_messages)
         messages.append({"role": "user", "content": query_text})
 
-        # 6. Route to the appropriate AI provider
+        # 6. Route to the appropriate AI provider (Groq first → Gemini → Sarvam)
+        if settings.GROQ_API_KEY:
+            groq_key = settings.GROQ_API_KEY  # noqa: F841
+            try:
+                logger.info(f"Submitting RAG query via Groq for agent {agent_id}")
+                return await _query_via_groq(system_prompt, messages)
+            except Exception as e:
+                logger.warning(f"Groq RAG failed, falling back: {e}")
+
         if settings.GEMINI_API_KEY:
-            logger.info(f"Submitting RAG query via Gemini for agent {agent_id}")
-            return await _query_via_gemini(system_prompt, messages, query_text)
-        else:
-            logger.info(f"Submitting RAG query via Sarvam Chat completions for agent {agent_id}")
-            return await _query_via_sarvam(system_prompt, messages)
+            try:
+                logger.info(f"Submitting RAG query via Gemini for agent {agent_id}")
+                return await _query_via_gemini(system_prompt, messages, query_text)
+            except Exception as e:
+                logger.warning(f"Gemini RAG failed, falling back: {e}")
+
+        logger.info(f"Submitting RAG query via Sarvam Chat completions for agent {agent_id}")
+        return await _query_via_sarvam(system_prompt, messages)
 
     except Exception as e:
         logger.error(f"Error executing RAG query for agent {agent_id}: {e}")
