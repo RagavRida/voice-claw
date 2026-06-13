@@ -28,6 +28,8 @@ import {
   Plus,
   ExternalLink,
   Sliders,
+  MessageSquare,
+  Users,
 } from "lucide-react";
 
 // ─── API URL HELPER ────────────────────────────────────────────────────────────
@@ -65,6 +67,14 @@ interface AgentInfo {
   greeting: string;
   business_type?: string;
   primary_language?: string;
+}
+
+interface ActionCard {
+  type: string;
+  task: string;
+  details: Record<string, string>;
+  icon: string;
+  color: string;
 }
 
 // ─── MAIN APP ──────────────────────────────────────────────────────────────────
@@ -705,6 +715,8 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
   const [keyboardQuery, setKeyboardQuery] = useState("");
   const [isKeyboardSubmitting, setIsKeyboardSubmitting] = useState(false);
   const [chatTurns, setChatTurns] = useState<VoiceTurn[]>([]);
+  const [activeActionCard, setActiveActionCard] = useState<ActionCard | null>(null);
+  const actionCardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -716,6 +728,61 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
   useEffect(() => {
     talkChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatTurns]);
+
+  // Auto-dismiss action card after 5 seconds
+  useEffect(() => {
+    if (activeActionCard) {
+      if (actionCardTimerRef.current) clearTimeout(actionCardTimerRef.current);
+      actionCardTimerRef.current = setTimeout(() => setActiveActionCard(null), 5000);
+    }
+    return () => {
+      if (actionCardTimerRef.current) clearTimeout(actionCardTimerRef.current);
+    };
+  }, [activeActionCard]);
+
+  // ── ACTION TAG PARSER ──────────────────────────────────────────────────────────
+  const parseActionTags = (text: string): { cleanText: string; action: ActionCard | null } => {
+    const actionRegex = /<action\s+([^/>]+)\/>/gi;
+    const match = actionRegex.exec(text);
+    if (!match) return { cleanText: text, action: null };
+
+    // Parse attributes from the tag
+    const attrString = match[1];
+    const attrs: Record<string, string> = {};
+    const attrRegex = /(\w+)="([^"]*)"/g;
+    let attrMatch;
+    while ((attrMatch = attrRegex.exec(attrString)) !== null) {
+      attrs[attrMatch[1]] = attrMatch[2];
+    }
+
+    const actionType = attrs.type || "unknown";
+    const task = attrs.task || "Action completed";
+    delete attrs.type;
+    delete attrs.task;
+
+    // Map connector type to icon name and color
+    const iconMap: Record<string, { icon: string; color: string }> = {
+      calendar: { icon: "calendar", color: "from-blue-500 to-cyan-400" },
+      twilio: { icon: "message", color: "from-green-500 to-emerald-400" },
+      shopify: { icon: "shop", color: "from-amber-500 to-orange-400" },
+      hubspot: { icon: "users", color: "from-purple-500 to-violet-400" },
+    };
+    const mapped = iconMap[actionType] || { icon: "check", color: "from-zinc-500 to-zinc-400" };
+
+    // Strip all action tags from the text
+    const cleanText = text.replace(/<action\s+[^/>]*\/>/gi, "").trim();
+
+    return {
+      cleanText,
+      action: {
+        type: actionType,
+        task,
+        details: attrs,
+        icon: mapped.icon,
+        color: mapped.color,
+      },
+    };
+  };
 
   useEffect(() => {
     if (isAgentView && activeAgentId) fetchAgentDetails(activeAgentId);
@@ -858,6 +925,13 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
       setMicStatus("Thinking...");
       const last4 = chatTurns.slice(-4);
 
+      // Build enabled connectors list
+      const enabled_connectors: string[] = [];
+      if (isCalendarConnected) enabled_connectors.push("calendar");
+      if (isTwilioConnected) enabled_connectors.push("twilio");
+      if (isShopifyConnected) enabled_connectors.push("shopify");
+      if (isHubspotConnected) enabled_connectors.push("hubspot");
+
       // 4. Query RAG
       const qRes = await fetch(getApiUrl("/api/query"), {
         method: "POST",
@@ -867,6 +941,7 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
           source_lang: language,
           agent_id: activeAgentId || "demo123",
           history: last4,
+          enabled_connectors,
         }),
       });
       if (!qRes.ok) throw new Error("Query failed");
@@ -878,7 +953,7 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            system: `You are a voice assistant for ${agentInfo?.business_name || "this business"}. Take the answer and append ONE short natural follow-up question. Max 2 sentences. Respond in the same language as the answer — if Telugu respond in Telugu, if Hindi respond in Hindi.`,
+            system: `You are a voice assistant for ${agentInfo?.business_name || "this business"}. Take the answer and append ONE short natural follow-up question. Max 2 sentences. Respond in the same language as the answer — if Telugu respond in Telugu, if Hindi respond in Hindi. IMPORTANT: If the answer contains any XML tags like <action .../>, preserve them exactly as-is at the end.`,
             messages: [
               {
                 role: "user",
@@ -896,14 +971,20 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
         /* enrichment failed — use original answer_text */
       }
 
-      // 6. Append agent turn
-      setChatTurns((prev) => [...prev, { role: "agent", text: answer_text }]);
+      // 5b. Parse and extract action tags BEFORE sending to TTS
+      const { cleanText: spokenText, action } = parseActionTags(answer_text);
+      if (action) {
+        setActiveActionCard(action);
+      }
 
-      // 7. TTS
+      // 6. Append agent turn (clean text without XML tags)
+      setChatTurns((prev) => [...prev, { role: "agent", text: spokenText }]);
+
+      // 7. TTS (send ONLY clean spoken text — no XML tags)
       const ttsRes = await fetch(getApiUrl("/api/tts"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: answer_text, source_lang: language, agent_id: activeAgentId || "demo123" }),
+        body: JSON.stringify({ text: spokenText, source_lang: language, agent_id: activeAgentId || "demo123" }),
       });
       if (!ttsRes.ok) throw new Error("TTS failed");
 
@@ -949,6 +1030,21 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
         }
         .field-fade-in {
           animation: fadeInField 150ms ease-out forwards;
+        }
+        @keyframes actionCardSlideIn {
+          0% { opacity: 0; transform: translateY(30px) scale(0.95); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes actionCardFadeOut {
+          0% { opacity: 1; transform: translateY(0) scale(1); }
+          100% { opacity: 0; transform: translateY(-10px) scale(0.97); }
+        }
+        @keyframes actionProgressBar {
+          0% { width: 100%; }
+          100% { width: 0%; }
+        }
+        .action-card-enter {
+          animation: actionCardSlideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
         @keyframes morph {
           0% { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; }
@@ -1828,6 +1924,64 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
               )}
             </div>
           </div>
+
+          {/* ── Action Card Overlay ──────────────────────────────────────── */}
+          {activeActionCard && (
+            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50 action-card-enter" id="action-card-overlay">
+              <div className="relative w-[320px] rounded-2xl border border-white/10 bg-white/5 backdrop-blur-2xl shadow-[0_8px_40px_rgba(0,0,0,0.5)] overflow-hidden">
+                {/* Top gradient accent bar */}
+                <div className={`h-1 w-full bg-gradient-to-r ${activeActionCard.color}`} />
+                
+                <div className="p-5 flex items-start gap-4">
+                  {/* Icon */}
+                  <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${activeActionCard.color} flex items-center justify-center shrink-0 shadow-lg`}>
+                    {activeActionCard.icon === "calendar" && <Calendar className="w-5 h-5 text-white" />}
+                    {activeActionCard.icon === "message" && <MessageSquare className="w-5 h-5 text-white" />}
+                    {activeActionCard.icon === "shop" && <ShoppingBag className="w-5 h-5 text-white" />}
+                    {activeActionCard.icon === "users" && <Users className="w-5 h-5 text-white" />}
+                    {activeActionCard.icon === "check" && <CheckCircle2 className="w-5 h-5 text-white" />}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    {/* Connector label */}
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">
+                      {activeActionCard.type === "calendar" ? "Google Calendar" : activeActionCard.type === "twilio" ? "WhatsApp" : activeActionCard.type === "shopify" ? "Shopify" : activeActionCard.type === "hubspot" ? "HubSpot" : "Action"}
+                    </p>
+                    {/* Task description */}
+                    <p className="text-sm font-semibold text-white/90 leading-snug">
+                      {activeActionCard.task}
+                    </p>
+                    {/* Detail attributes */}
+                    {Object.keys(activeActionCard.details).length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {Object.entries(activeActionCard.details).map(([key, value]) => (
+                          <span key={key} className="inline-flex items-center gap-1 text-[10px] bg-white/10 text-white/60 px-2 py-0.5 rounded-full">
+                            <span className="text-white/30">{key}:</span> {value}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dismiss button */}
+                  <button
+                    onClick={() => setActiveActionCard(null)}
+                    className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/40 hover:text-white/80 transition-all shrink-0 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {/* Auto-dismiss progress bar */}
+                <div className="h-0.5 bg-white/5">
+                  <div
+                    className={`h-full bg-gradient-to-r ${activeActionCard.color} opacity-60`}
+                    style={{ animation: "actionProgressBar 5s linear forwards" }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Minimalist branding indicator */}
           <div className="w-full flex justify-center pb-8 z-10">

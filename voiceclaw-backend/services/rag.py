@@ -100,7 +100,7 @@ async def _query_via_sarvam(system_prompt: str, messages: list[dict]) -> str:
         answer = choices[0].get("message", {}).get("content", "")
         return answer.strip()
 
-async def query_knowledge_base(agent_id: str, query_text: str, history: list[dict] = []) -> str:
+async def query_knowledge_base(agent_id: str, query_text: str, history: list[dict] = [], enabled_connectors: list[str] = []) -> str:
     # 1. Fetch Agent configuration from database
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Agent).where(Agent.id == agent_id))
@@ -127,6 +127,11 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
         if restrictions:
             system_prompt += f" Restrictions: {restrictions}"
         system_prompt += f"\n\nContext:\n{context}"
+
+        # 4b. Inject connector tool-use instructions when connectors are active
+        if enabled_connectors:
+            tool_instructions = _build_tool_instructions(enabled_connectors)
+            system_prompt += tool_instructions
 
         # 5. Build conversation history messages (limit to configured turns)
         history_messages = []
@@ -162,3 +167,65 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
     except Exception as e:
         logger.error(f"Error executing RAG query for agent {agent_id}: {e}")
         raise RAGError(f"RAG query execution failed: {e}")
+
+
+def _build_tool_instructions(enabled_connectors: list[str]) -> str:
+    """Build tool-use instructions for the LLM based on which connectors are active."""
+    instructions = "\n\n--- TOOL USE INSTRUCTIONS ---\n"
+    instructions += "You have access to the following business tools. When the user's request matches a tool's purpose, "
+    instructions += "respond naturally in speech AND append a single self-closing XML action tag at the END of your response.\n"
+    instructions += "IMPORTANT: Your spoken response should confirm the action naturally (e.g., 'Sure, I am booking that for you!'). "
+    instructions += "The XML tag must come AFTER your spoken text on a new line. Only add ONE action tag per response.\n\n"
+
+    tool_docs = {
+        "calendar": (
+            "TOOL: Google Calendar\n"
+            "PURPOSE: Schedule appointments, book time slots, set reminders\n"
+            "TRIGGER: User asks to book, schedule, set up a meeting, or make an appointment\n"
+            "FORMAT: <action type=\"calendar\" task=\"BRIEF_DESCRIPTION\" time=\"YYYY-MM-DDTHH:MM:SS\" />\n"
+            "EXAMPLE: User says 'Book a slot for tomorrow at 4 PM'\n"
+            "  Response: Sure, I am booking an appointment for you tomorrow at 4 PM!\n"
+            "  <action type=\"calendar\" task=\"Book appointment\" time=\"2026-06-15T16:00:00\" />\n"
+        ),
+        "twilio": (
+            "TOOL: WhatsApp / Twilio\n"
+            "PURPOSE: Send WhatsApp messages, SMS notifications, or confirmations\n"
+            "TRIGGER: User asks to send a message, notify someone, or send confirmation\n"
+            "FORMAT: <action type=\"twilio\" task=\"BRIEF_DESCRIPTION\" recipient=\"PHONE_OR_NAME\" />\n"
+            "EXAMPLE: User says 'Send a confirmation to the patient'\n"
+            "  Response: I will send a WhatsApp confirmation right away!\n"
+            "  <action type=\"twilio\" task=\"Send confirmation\" recipient=\"patient\" />\n"
+        ),
+        "shopify": (
+            "TOOL: Shopify / Inventory\n"
+            "PURPOSE: Check product availability, look up prices, manage orders\n"
+            "TRIGGER: User asks about product stock, pricing, or order status\n"
+            "FORMAT: <action type=\"shopify\" task=\"BRIEF_DESCRIPTION\" product=\"PRODUCT_NAME\" />\n"
+            "EXAMPLE: User says 'Is the blue shirt available?'\n"
+            "  Response: Let me check the inventory for the blue shirt!\n"
+            "  <action type=\"shopify\" task=\"Check inventory\" product=\"blue shirt\" />\n"
+        ),
+        "hubspot": (
+            "TOOL: HubSpot / CRM\n"
+            "PURPOSE: Create contacts, log interactions, update customer records\n"
+            "TRIGGER: User provides contact details, asks to save info, or register as a lead\n"
+            "FORMAT: <action type=\"hubspot\" task=\"BRIEF_DESCRIPTION\" email=\"EMAIL_OR_NAME\" />\n"
+            "EXAMPLE: User says 'Save my details, my email is john@example.com'\n"
+            "  Response: I have saved your contact details to our system!\n"
+            "  <action type=\"hubspot\" task=\"Create CRM contact\" email=\"john@example.com\" />\n"
+        ),
+    }
+
+    active_tools = []
+    for connector in enabled_connectors:
+        if connector in tool_docs:
+            active_tools.append(tool_docs[connector])
+
+    if not active_tools:
+        return ""
+
+    instructions += "\n".join(active_tools)
+    instructions += "\nIf the user's request does NOT match any tool, respond normally WITHOUT any action tag.\n"
+    instructions += "--- END TOOL USE INSTRUCTIONS ---\n"
+    return instructions
+

@@ -17,6 +17,7 @@ class QueryRequest(BaseModel):
     source_lang: str
     agent_id: str
     history: Optional[List[Dict[str, Any]]] = []
+    enabled_connectors: Optional[List[str]] = []
 
 @router.post("/query")
 async def query_agent(
@@ -38,7 +39,8 @@ async def query_agent(
         answer_text = await rag.query_knowledge_base(
             agent_id=request.agent_id,
             query_text=request.text,
-            history=request.history
+            history=request.history,
+            enabled_connectors=request.enabled_connectors or []
         )
         
         # 3. Return response matching exact frontend contract
