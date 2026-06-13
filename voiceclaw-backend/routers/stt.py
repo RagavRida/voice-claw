@@ -28,12 +28,29 @@ async def speech_to_text(
         elif audio.content_type:
             audio_format = audio.content_type.split("/")[-1]
             
-        # Call Sarvam AI STT
+        # Call Sarvam AI STT (transcribe mode — preserves original language)
         result = await sarvam.speech_to_text_translate(audio_bytes, audio_format=audio_format)
-        
+
+        transcript = result.get("transcript", "")
+        source_lang = result.get("source_language_code", "")
+
+        # Refine language detection using Sarvam Language ID on the transcribed text.
+        # This handles code-mixed speech (Hinglish, Tenglish) more accurately than STT alone.
+        if transcript and (not source_lang or source_lang in ("unknown", "")):
+            try:
+                source_lang = await sarvam.identify_language(transcript)
+                logger.info(f"Language ID refined source_lang to: {source_lang}")
+            except Exception as lid_err:
+                logger.warning(f"Language ID fallback failed: {lid_err}")
+                source_lang = settings.DEFAULT_LANGUAGE_CODE
+
+        # Fallback if still empty
+        if not source_lang:
+            source_lang = settings.DEFAULT_LANGUAGE_CODE
+
         return {
-            "text": result.get("transcript", ""),
-            "source_lang": result.get("source_language_code", settings.DEFAULT_LANGUAGE_CODE),
+            "text": transcript,
+            "source_lang": source_lang,
             "agent_id": agent_id
         }
     except sarvam.SarvamAPIError as e:

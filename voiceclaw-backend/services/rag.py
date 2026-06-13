@@ -100,7 +100,7 @@ async def _query_via_sarvam(system_prompt: str, messages: list[dict]) -> str:
         answer = choices[0].get("message", {}).get("content", "")
         return answer.strip()
 
-async def query_knowledge_base(agent_id: str, query_text: str, history: list[dict] = [], enabled_connectors: list[str] = []) -> str:
+async def query_knowledge_base(agent_id: str, query_text: str, history: list[dict] = [], enabled_connectors: list[str] = [], source_lang: str = "en-IN") -> str:
     # 1. Fetch Agent configuration from database
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Agent).where(Agent.id == agent_id))
@@ -126,6 +126,28 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
         system_prompt = settings.RAG_SYSTEM_PROMPT_TEMPLATE.format(business_name=business_name)
         if restrictions:
             system_prompt += f" Restrictions: {restrictions}"
+
+        # 4a. Inject multilingual response instructions
+        lang_name_map = {
+            "hi-IN": "Hindi", "te-IN": "Telugu", "ta-IN": "Tamil", "kn-IN": "Kannada",
+            "ml-IN": "Malayalam", "bn-IN": "Bengali", "mr-IN": "Marathi", "gu-IN": "Gujarati",
+            "pa-IN": "Punjabi", "od-IN": "Odia", "ur-IN": "Urdu", "en-IN": "English",
+            "as-IN": "Assamese", "ne-IN": "Nepali", "sa-IN": "Sanskrit",
+        }
+        detected_lang_name = lang_name_map.get(source_lang, "")
+        if source_lang and source_lang != "en-IN" and detected_lang_name:
+            system_prompt += (
+                f"\n\nIMPORTANT LANGUAGE INSTRUCTION: The user is speaking in {detected_lang_name} ({source_lang}). "
+                f"You MUST respond in {detected_lang_name}. Match the user's language exactly. "
+                f"If the user mixes {detected_lang_name} with English (code-mixing), respond in the same mixed style. "
+                f"Do NOT translate your response to English."
+            )
+        elif source_lang and source_lang != "en-IN":
+            system_prompt += (
+                f"\n\nIMPORTANT LANGUAGE INSTRUCTION: The user is speaking in language code '{source_lang}'. "
+                f"Respond in the SAME language as the user. Do NOT translate to English."
+            )
+
         system_prompt += f"\n\nContext:\n{context}"
 
         # 4b. Inject connector tool-use instructions when connectors are active

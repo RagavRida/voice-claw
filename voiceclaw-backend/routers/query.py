@@ -40,7 +40,8 @@ async def query_agent(
             agent_id=request.agent_id,
             query_text=request.text,
             history=request.history,
-            enabled_connectors=request.enabled_connectors or []
+            enabled_connectors=request.enabled_connectors or [],
+            source_lang=request.source_lang or "en-IN"
         )
         
         # 3. Return response matching exact frontend contract

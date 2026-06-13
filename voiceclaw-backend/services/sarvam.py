@@ -16,7 +16,8 @@ async def speech_to_text_translate(
     prompt: str = None,
 ) -> dict:
     """
-    Translate speech audio to English text using Sarvam AI SDK (saaras:v3).
+    Transcribe speech audio using Sarvam AI SDK (saaras:v3) with auto language detection.
+    Preserves the original language of the speaker for multilingual support.
 
     Args:
         audio_bytes: Raw audio bytes.
@@ -42,7 +43,6 @@ async def speech_to_text_translate(
             client.speech_to_text.transcribe,
             file=audio_file,
             model="saaras:v3",
-            mode="translate",
         )
 
         logger.info(f"Sarvam STT SDK response: {response}")
