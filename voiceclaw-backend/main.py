@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from database import init_db
 from services import embeddings
-from routers import upload, ingest, stt, tts, query, agent, config
+from routers import upload, ingest, stt, tts, query, agent, config, pronunciation
 
 # Configure logging format and level
 logging.basicConfig(
@@ -57,6 +57,7 @@ app.include_router(tts.router, prefix="/api", tags=["tts"])
 app.include_router(query.router, prefix="/api", tags=["query"])
 app.include_router(agent.router, prefix="/api", tags=["agent"])
 app.include_router(config.router, prefix="/api", tags=["config"])
+app.include_router(pronunciation.router, prefix="/api", tags=["pronunciation"])
 
 @app.get("/health")
 async def health_check():

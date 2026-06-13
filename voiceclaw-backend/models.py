@@ -13,6 +13,7 @@ class Agent(Base):
     greeting = Column(String, nullable=False)
     restrictions = Column(String, nullable=False)
     top_faqs = Column(JSON, nullable=False, default=list)
+    dict_id = Column(String, nullable=True)  # Sarvam pronunciation dictionary ID (e.g. "p_5cb7faa6")
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Resource(Base):

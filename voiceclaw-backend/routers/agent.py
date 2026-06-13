@@ -26,6 +26,7 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
             "greeting": agent.greeting,
             "restrictions": agent.restrictions,
             "top_faqs": agent.top_faqs,
+            "dict_id": agent.dict_id,
             "created_at": agent.created_at
         }
     except HTTPException:

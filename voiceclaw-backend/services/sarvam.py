@@ -42,7 +42,7 @@ async def speech_to_text_translate(audio_bytes: bytes, audio_format: str = None)
         logger.error(f"Unexpected error in speech_to_text_translate: {e}")
         raise SarvamAPIError("Unexpected error calling Sarvam STT API", str(e))
 
-async def text_to_speech(text: str, target_language_code: str, speaker: str = None) -> bytes:
+async def text_to_speech(text: str, target_language_code: str, speaker: str = None, dict_id: str = None) -> bytes:
     if speaker is None:
         speaker = settings.SARVAM_TTS_SPEAKER
     url = f"{settings.SARVAM_BASE_URL}/text-to-speech"
@@ -57,6 +57,9 @@ async def text_to_speech(text: str, target_language_code: str, speaker: str = No
         "model": settings.SARVAM_TTS_MODEL,
         "enable_preprocessing": True
     }
+    # Include pronunciation dictionary if provided (requires bulbul:v3)
+    if dict_id:
+        payload["dict_id"] = dict_id
     
     try:
         async with httpx.AsyncClient(timeout=settings.SARVAM_API_TIMEOUT) as client:
