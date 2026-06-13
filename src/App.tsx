@@ -950,7 +950,15 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
         .field-fade-in {
           animation: fadeInField 150ms ease-out forwards;
         }
+        @keyframes morph {
+          0% { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; }
+          25% { border-radius: 60% 40% 55% 45% / 55% 45% 60% 40%; }
+          50% { border-radius: 50% 55% 40% 60% / 40% 60% 50% 50%; }
+          75% { border-radius: 40% 60% 50% 55% / 50% 40% 60% 45%; }
+          100% { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; }
+        }
       `}</style>
+
 
       {/* ── Toast (bottom-center) ──────────────────────────────────────────────── */}
       {toast && (
@@ -1721,195 +1729,113 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
       {isAgentView && (
         <div
           id="page-agent"
-          className="w-full min-h-screen flex flex-col bg-[#0a0a0a] text-white"
+          className="w-full min-h-screen flex flex-col bg-black text-white relative overflow-hidden"
         >
-          {/* Mic permission denied banner */}
+          {/* Cosmic background radial gradient */}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(120,119,198,0.08)_0%,_rgba(0,0,0,0)_70%)] pointer-events-none" />
+
+          {/* Mic permission denied banner (only showing icon, no text) */}
           {micPermissionDenied && (
             <div
               id="mic-error-banner"
-              className="w-full bg-rose-950/60 border-b border-rose-900 px-4 py-3 flex items-center gap-3 text-xs text-rose-200"
+              className="absolute top-0 left-0 right-0 z-50 bg-rose-950/60 border-b border-rose-900/40 px-4 py-3 flex items-center justify-center backdrop-blur-md"
             >
-              <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
-              Allow microphone access to use VoiceForge
+              <AlertCircle className="w-5 h-5 text-rose-500" />
             </div>
           )}
 
-          <div className="flex-1 flex flex-col items-center py-8 px-4">
-            <div className="w-full max-w-lg">
-              {/* Top nav */}
-              <div className="flex items-center justify-between pb-6 border-b border-zinc-900">
-                <button
-                  id="btn-nav-back"
-                  onClick={() => navigate("/builder")}
-                  className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-400 hover:text-white transition-colors py-2"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" /> Back to Builder
-                </button>
-                <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-bold tracking-widest uppercase">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                  Live
-                </div>
-              </div>
-
-              {/* Business name — 13px muted */}
-              <div className="text-center mt-8 mb-4">
-                {isAgentLoading ? (
-                  <Loader2 className="w-5 h-5 animate-spin text-zinc-500 mx-auto" />
-                ) : (
-                  <p
-                    className="text-zinc-500 font-medium"
-                    style={{ fontSize: "13px" }}
-                  >
-                    {agentInfo?.business_name || "VoiceForge Agent"}
-                  </p>
-                )}
-              </div>
-
-              {/* ── Mic area ────────────────────────────────────────────────── */}
-              <div className="flex flex-col items-center justify-center relative py-6">
-                {/* Pulse rings while listening */}
-                {micStatus === "Listening..." && (
-                  <>
-                    <div className="absolute w-[200px] h-[200px] bg-white/5 rounded-full border border-white/10 animate-ping opacity-30" />
-                    <div className="absolute w-[150px] h-[150px] bg-white/3 rounded-full border border-white/10 animate-pulse" />
-                  </>
-                )}
-
-                {/*
-                  Mic button:
-                  - 80px on md+ (w-20 h-20)
-                  - 96px on mobile (w-24 h-24) — base class
-                  - White background on idle, black icon
-                */}
-                <button
-                  id="btn-mic-trigger"
-                  onMouseDown={handleMicStart}
-                  onMouseUp={() => handleMicStop()}
-                  onMouseLeave={() => handleMicStop()}
-                  onTouchStart={handleMicStart}
-                  onTouchEnd={() => handleMicStop()}
-                  disabled={
-                    micStatus === "Thinking..." ||
-                    micStatus === "Speaking..." ||
-                    isAgentLoading
-                  }
-                  className={`relative w-24 h-24 md:w-20 md:h-20 rounded-full flex items-center justify-center transition-all focus:outline-none select-none ${
-                    micStatus === "Listening..."
-                      ? "bg-white text-black scale-95 shadow-2xl shadow-white/20 cursor-pointer"
-                      : micStatus === "Speaking..."
-                      ? "bg-zinc-800 text-white cursor-not-allowed border border-emerald-500/40"
-                      : micStatus === "Thinking..."
-                      ? "bg-zinc-800 text-white cursor-not-allowed border border-zinc-700"
-                      : "bg-white text-black hover:bg-zinc-100 cursor-pointer shadow-lg"
-                  }`}
-                  title="Hold to talk"
-                >
-                  {micStatus === "Thinking..." ? (
-                    <Loader2 className="w-8 h-8 animate-spin text-zinc-400" />
-                  ) : micStatus === "Speaking..." ? (
-                    <Volume2 className="w-8 h-8 text-emerald-400 animate-pulse" />
-                  ) : (
-                    <Mic className="w-8 h-8" />
-                  )}
-                </button>
-
-                {/* Status label */}
-                <p
-                  className="mt-5 text-sm font-semibold tracking-wide text-zinc-400 uppercase"
-                  id="mic-status-label"
-                >
-                  {micStatus}
-                </p>
-
-                {/* Amplitude bars — hidden on mobile (<768px) */}
-                {micStatus === "Listening..." && (
-                  <div
-                    className="hidden sm:flex items-end gap-1.5 mt-4"
-                    id="audio-amplitude-visualizer"
-                    style={{ height: "40px" }}
-                  >
-                    <div className="w-1.5 bg-white rounded-full visualizer-bar" style={{ animationDelay: "0.15s", animationDuration: "0.75s" }} />
-                    <div className="w-1.5 bg-white rounded-full visualizer-bar" style={{ animationDelay: "0.30s", animationDuration: "0.55s" }} />
-                    <div className="w-1.5 bg-white rounded-full visualizer-bar" style={{ animationDelay: "0.00s", animationDuration: "0.60s" }} />
-                    <div className="w-1.5 bg-white rounded-full visualizer-bar" style={{ animationDelay: "0.45s", animationDuration: "0.80s" }} />
-                    <div className="w-1.5 bg-white rounded-full visualizer-bar" style={{ animationDelay: "0.20s", animationDuration: "0.65s" }} />
-                  </div>
-                )}
-              </div>
-
-              {/* ── Chat history ────────────────────────────────────────────── */}
-              <div className="overflow-y-auto max-h-[200px] md:max-h-[300px] mt-2">
-                <div className="space-y-3 px-1 pb-1" id="container-dialogue">
-                  {chatTurns.length === 0 ? (
-                    <p className="text-xs text-center text-zinc-600 italic py-4">
-                      Tap to speak to begin the conversation.
-                    </p>
-                  ) : (
-                    chatTurns.map((turn, i) => (
-                      <div
-                        key={i}
-                        className={`flex ${
-                          turn.role === "user" ? "justify-end" : "justify-start"
-                        }`}
-                      >
-                        <div>
-                          <div
-                            className={`inline-block px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed max-w-[260px] sm:max-w-xs ${
-                              turn.role === "user"
-                                ? "bg-zinc-900 border border-[#1a1a1a] text-white rounded-tr-none"
-                                : "bg-[#111] border border-zinc-800 text-zinc-100 rounded-tl-none"
-                            }`}
-                          >
-                            {turn.text}
-                          </div>
-                          {/* Language badge for user messages */}
-                          {turn.role === "user" && turn.lang && (
-                            <p className="text-[9px] text-zinc-600 text-right mt-0.5 pr-1">
-                              {turn.lang}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                  <div ref={talkChatEndRef} />
-                </div>
-              </div>
-
-              {/* ── Keyboard fallback ──────────────────────────────────────── */}
-              <div className="pt-4 mt-2">
-                <form onSubmit={handleKeyboardSubmit} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={keyboardQuery}
-                    onChange={(e) => setKeyboardQuery(e.target.value)}
-                    disabled={
-                      micStatus === "Thinking..." ||
-                      micStatus === "Speaking..." ||
-                      isKeyboardSubmitting
-                    }
-                    placeholder="Type a query..."
-                    className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs focus:ring-1 focus:ring-zinc-600 focus:outline-none text-zinc-200 placeholder-zinc-600"
-                  />
-                  <button
-                    type="submit"
-                    disabled={
-                      !keyboardQuery.trim() ||
-                      micStatus === "Thinking..." ||
-                      micStatus === "Speaking..."
-                    }
-                    className="bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg px-4 py-2 text-xs font-semibold disabled:opacity-50 transition-colors cursor-pointer"
-                  >
-                    Send
-                  </button>
-                </form>
-              </div>
+          {/* Header */}
+          <div className="w-full flex items-center justify-between p-6 z-10">
+            <button
+              id="btn-nav-back"
+              onClick={() => navigate("/builder")}
+              className="w-10 h-10 rounded-full bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition-all active:scale-95 cursor-pointer"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-1.5 bg-zinc-900/60 border border-zinc-800/80 px-3 py-1.5 rounded-full select-none">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" />
             </div>
           </div>
 
-          <div className="text-center text-[10px] text-zinc-700 pb-4">
-            VoiceClaw Agent ID:{" "}
-            <span className="font-mono">{activeAgentId || "demo123"}</span>
+          {/* Main Content Area: Centered Glowing Orb */}
+          <div className="flex-1 flex flex-col items-center justify-center z-10 px-4">
+            <div className="flex flex-col items-center justify-center relative">
+              {/* Concentric Pulse rings while listening */}
+              {micStatus === "Listening..." && (
+                <>
+                  <div className="absolute w-[320px] h-[320px] bg-cyan-500/10 rounded-full animate-ping opacity-25" />
+                  <div className="absolute w-[260px] h-[260px] bg-blue-500/5 rounded-full animate-pulse opacity-40" />
+                </>
+              )}
+              {/* Concentric Pulse rings while speaking */}
+              {micStatus === "Speaking..." && (
+                <>
+                  <div className="absolute w-[300px] h-[300px] bg-emerald-500/10 rounded-full animate-ping opacity-25" />
+                  <div className="absolute w-[240px] h-[240px] bg-teal-500/5 rounded-full animate-pulse opacity-40" />
+                </>
+              )}
+
+              {/* The Glowing Orb */}
+              <button
+                id="btn-mic-trigger"
+                onMouseDown={handleMicStart}
+                onMouseUp={() => handleMicStop()}
+                onMouseLeave={() => handleMicStop()}
+                onTouchStart={handleMicStart}
+                onTouchEnd={() => handleMicStop()}
+                disabled={
+                  micStatus === "Thinking..." ||
+                  micStatus === "Speaking..." ||
+                  isAgentLoading
+                }
+                className={`relative w-40 h-40 rounded-full flex items-center justify-center transition-all duration-700 focus:outline-none select-none ${
+                  micStatus === "Listening..."
+                    ? "bg-gradient-to-tr from-cyan-400 via-blue-500 to-indigo-500 shadow-[0_0_50px_rgba(6,182,212,0.5)] scale-105 cursor-pointer animate-[morph_6s_ease-in-out_infinite]"
+                    : micStatus === "Speaking..."
+                    ? "bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-500 shadow-[0_0_50px_rgba(16,185,129,0.5)] cursor-not-allowed animate-[morph_4s_ease-in-out_infinite]"
+                    : micStatus === "Thinking..."
+                    ? "bg-gradient-to-tr from-violet-600 via-fuchsia-500 to-indigo-600 shadow-[0_0_40px_rgba(139,92,246,0.4)] cursor-not-allowed animate-[spin_8s_linear_infinite]"
+                    : "bg-gradient-to-tr from-zinc-800 via-zinc-900 to-zinc-850 border border-zinc-700/60 shadow-[0_0_30px_rgba(255,255,255,0.03)] hover:shadow-[0_0_40px_rgba(255,255,255,0.08)] cursor-pointer hover:scale-102"
+                }`}
+              >
+                {/* Center symbol */}
+                <div className="transition-all duration-300">
+                  {micStatus === "Thinking..." ? (
+                    <Sparkles className="w-10 h-10 text-white animate-pulse" />
+                  ) : micStatus === "Speaking..." ? (
+                    <Volume2 className="w-10 h-10 text-white animate-[bounce_1s_infinite]" />
+                  ) : isAgentLoading ? (
+                    <Loader2 className="w-10 h-10 text-zinc-500 animate-spin" />
+                  ) : (
+                    <Mic className="w-10 h-10 text-white" />
+                  )}
+                </div>
+              </button>
+
+              {/* Minimalist Visualizer Waves */}
+              {micStatus === "Listening..." && (
+                <div
+                  className="flex items-end gap-2 mt-12 h-8"
+                  id="audio-amplitude-visualizer"
+                >
+                  <div className="w-1 bg-white/60 rounded-full visualizer-bar" style={{ animationDelay: "0.15s", animationDuration: "0.75s" }} />
+                  <div className="w-1 bg-white/60 rounded-full visualizer-bar" style={{ animationDelay: "0.30s", animationDuration: "0.55s" }} />
+                  <div className="w-1 bg-white/60 rounded-full visualizer-bar" style={{ animationDelay: "0.00s", animationDuration: "0.60s" }} />
+                  <div className="w-1 bg-white/60 rounded-full visualizer-bar" style={{ animationDelay: "0.45s", animationDuration: "0.80s" }} />
+                  <div className="w-1 bg-white/60 rounded-full visualizer-bar" style={{ animationDelay: "0.20s", animationDuration: "0.65s" }} />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Minimalist branding indicator */}
+          <div className="w-full flex justify-center pb-8 z-10">
+            <div className="flex items-center gap-1.5 opacity-20 hover:opacity-45 transition-opacity duration-300">
+              <span className="w-1 h-3 bg-white rounded-full animate-pulse" />
+              <span className="w-1 h-5 bg-white rounded-full animate-pulse" style={{ animationDelay: "0.2s" }} />
+              <span className="w-1 h-2 bg-white rounded-full animate-pulse" style={{ animationDelay: "0.4s" }} />
+            </div>
           </div>
         </div>
       )}
