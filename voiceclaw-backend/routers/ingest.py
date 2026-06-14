@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from database import get_db, AsyncSessionLocal
 from models import Resource
-from services import firecrawl, embeddings, vector_store
+from services import firecrawl, embeddings, vector_store, context_graph
 
 logger = logging.getLogger("ingest_router")
 
@@ -34,7 +34,15 @@ async def process_url_ingestion(resource_id: str, url: str, agent_id: str):
             vector_store_agent_id = agent_id if agent_id and agent_id != "unassigned" else f"temp_{resource_id}"
             chunk_count = await vector_store.store_chunks(vector_store_agent_id, resource_id, chunks, vectors)
 
-            # 4. Update status in Database
+            # 4. Build context graph
+            try:
+                await context_graph.ingest_chunks(vector_store_agent_id, chunks, resource_id=resource_id)
+                stats = context_graph.get_graph_stats(vector_store_agent_id)
+                logger.info(f"Context graph for {vector_store_agent_id}: {stats}")
+            except Exception as graph_err:
+                logger.warning(f"Context graph ingestion failed (non-fatal): {graph_err}")
+
+            # 5. Update status in Database
             result = await db.execute(select(Resource).where(Resource.id == resource_id))
             resource = result.scalars().first()
             if resource:

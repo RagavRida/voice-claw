@@ -7,7 +7,7 @@ from sqlalchemy import select
 from config import settings
 from database import get_db, AsyncSessionLocal
 from models import Resource
-from services import document_intelligence, embeddings, vector_store
+from services import document_intelligence, embeddings, vector_store, context_graph
 
 logger = logging.getLogger("upload_router")
 
@@ -40,7 +40,15 @@ async def process_pdf_ingestion(resource_id: str, file_path: str, filename: str,
             vector_store_agent_id = agent_id if agent_id and agent_id != "unassigned" else f"temp_{resource_id}"
             chunk_count = await vector_store.store_chunks(vector_store_agent_id, resource_id, chunks, vectors)
 
-            # 5. Update resource record
+            # 5. Build context graph (extract entities & relationships)
+            try:
+                await context_graph.ingest_chunks(vector_store_agent_id, chunks, resource_id=resource_id)
+                stats = context_graph.get_graph_stats(vector_store_agent_id)
+                logger.info(f"Context graph for {vector_store_agent_id}: {stats}")
+            except Exception as graph_err:
+                logger.warning(f"Context graph ingestion failed (non-fatal): {graph_err}")
+
+            # 6. Update resource record
             result = await db.execute(select(Resource).where(Resource.id == resource_id))
             resource = result.scalars().first()
             if resource:

@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from database import get_db
 from models import Agent, Resource
-from services import vector_store
+from services import vector_store, context_graph
 
 logger = logging.getLogger("agent_router")
 
@@ -79,3 +79,42 @@ async def delete_agent_resource(agent_id: str, resource_id: str, db: AsyncSessio
     except Exception as e:
         logger.error(f"Error deleting resource {resource_id} for agent {agent_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail={"error": "Database error", "detail": str(e)})
+
+@router.get("/agent/{agent_id}/graph")
+async def get_agent_graph(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Return the context graph stats and entities for an agent."""
+    try:
+        result = await db.execute(select(Agent).where(Agent.id == agent_id))
+        agent = result.scalars().first()
+        if not agent:
+            raise HTTPException(status_code=404, detail={"error": "Agent not found"})
+
+        graph = context_graph.get_graph(agent_id)
+        stats = graph.get_stats()
+        
+        # Return stats + first 50 entities for preview
+        entities_preview = []
+        for eid, entity in list(graph.entities.items())[:50]:
+            entities_preview.append({
+                "id": eid,
+                "name": entity.get("name", ""),
+                "type": entity.get("type", ""),
+                "attributes": entity.get("attributes", {}),
+            })
+
+        edges_preview = graph.edges[:50]
+
+        return {
+            "agent_id": agent_id,
+            "stats": stats,
+            "entities": entities_preview,
+            "edges": edges_preview,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting graph for agent {agent_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail={"error": "Server error", "detail": str(e)})

@@ -4,7 +4,7 @@ from sqlalchemy import select
 from config import settings
 from database import AsyncSessionLocal
 from models import Agent
-from services import embeddings, vector_store
+from services import embeddings, vector_store, context_graph
 
 logger = logging.getLogger("rag_service")
 
@@ -151,6 +151,14 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
             )
 
         system_prompt += f"\n\nContext:\n{context}"
+
+        # 4c. Inject context graph (entity relationships) if available
+        try:
+            graph_context = await context_graph.get_graph_context(agent_id, query_text)
+            if graph_context:
+                system_prompt += f"\n\n{graph_context}"
+        except Exception as graph_err:
+            logger.warning(f"Context graph query failed (non-fatal): {graph_err}")
 
         # 4b. Inject connector tool-use instructions when connectors are active
         if enabled_connectors:
