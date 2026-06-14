@@ -926,9 +926,16 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
     }
   };
 
-  const handleMicStart = async (e: MouseEvent | TouchEvent) => {
+  const handleMicToggle = async (e: any) => {
     e.preventDefault();
     if (micStatus === "Thinking..." || micStatus === "Speaking...") return;
+    
+    // If already listening, stop recording
+    if (micStatus === "Listening...") {
+      handleMicStop();
+      return;
+    }
+
     const stream = await requestMediaStream();
     if (!stream) return;
 
@@ -1787,11 +1794,7 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
               {/* The Glowing Orb */}
               <button
                 id="btn-mic-trigger"
-                onMouseDown={handleMicStart}
-                onMouseUp={() => handleMicStop()}
-                onMouseLeave={() => handleMicStop()}
-                onTouchStart={handleMicStart}
-                onTouchEnd={() => handleMicStop()}
+                onClick={handleMicToggle}
                 disabled={
                   micStatus === "Thinking..." ||
                   micStatus === "Speaking..." ||
