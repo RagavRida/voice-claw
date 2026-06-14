@@ -32,6 +32,7 @@ import {
   Users,
   Database,
   Zap,
+  Code,
 } from "lucide-react";
 import { ConnectorsPanel } from './components/ConnectorsPanel';
 import { InsightsPanel } from './components/InsightsPanel';
@@ -122,6 +123,20 @@ export default function App() {
   ) => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  // ── EMBED STATE ──────────────────────────────────────────────────────────────
+  const isEmbed = new URLSearchParams(window.location.search).get("embed") === "true";
+  const [isEmbedExpanded, setIsEmbedExpanded] = useState(false);
+
+  const toggleEmbed = () => {
+    const newState = !isEmbedExpanded;
+    setIsEmbedExpanded(newState);
+    if (newState) {
+      window.parent.postMessage("voiceclaw-expand", "*");
+    } else {
+      window.parent.postMessage("voiceclaw-collapse", "*");
+    }
   };
 
   // ── BUILDER STATE ─────────────────────────────────────────────────────────────
@@ -1340,6 +1355,18 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
                 <Copy className="w-4 h-4" />
                 Share agent link
               </button>
+              <button
+                id="btn-embed-agent"
+                onClick={() => {
+                  const host = window.location.origin;
+                  copyToClipboard(`<script src="${host}/embed.js" data-agent-id="${activeAgentId}"></script>`);
+                  showToast("Embed code copied to clipboard!", "success");
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 py-3.5 px-4 rounded-lg text-sm font-medium transition-all cursor-pointer"
+              >
+                <Code className="w-4 h-4" />
+                Get Embed Code
+              </button>
             </div>
 
             <p className="text-center text-[10px] text-zinc-700 mt-2">
@@ -1813,58 +1840,76 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
           )}
 
           {/* Header */}
-          <div className="w-full flex items-center justify-between p-6 z-10">
-            <button
-              id="btn-nav-back"
-              onClick={() => navigate("/builder")}
-              className="w-10 h-10 rounded-full bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition-all active:scale-95 cursor-pointer"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-1.5 bg-zinc-900/60 border border-zinc-800/80 px-3 py-1.5 rounded-full select-none">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" />
+          {(!isEmbed || isEmbedExpanded) && (
+            <div className="w-full flex items-center justify-between p-4 sm:p-6 z-10">
+              {isEmbed ? (
+                <button
+                  id="btn-embed-toggle"
+                  onClick={toggleEmbed}
+                  className="w-10 h-10 rounded-full bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition-all active:scale-95 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              ) : (
+                <button
+                  id="btn-nav-back"
+                  onClick={() => navigate("/builder")}
+                  className="w-10 h-10 rounded-full bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition-all active:scale-95 cursor-pointer"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+              )}
+              <div className="flex items-center gap-1.5 bg-zinc-900/60 border border-zinc-800/80 px-3 py-1.5 rounded-full select-none">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Main Content Area: Centered Glowing Orb */}
-          <div className="flex-1 flex flex-col items-center justify-center z-10 px-4">
+          <div className="flex-1 flex flex-col items-center justify-center z-10 p-4">
             <div className="flex flex-col items-center justify-center relative">
               {/* Concentric Pulse rings while listening */}
               {micStatus === "Listening..." && (
                 <>
-                  <div className="absolute w-[320px] h-[320px] bg-cyan-500/10 rounded-full animate-ping opacity-25" />
-                  <div className="absolute w-[260px] h-[260px] bg-blue-500/5 rounded-full animate-pulse opacity-40" />
+                  <div className={`absolute bg-cyan-500/10 rounded-full animate-ping opacity-25 ${isEmbed && !isEmbedExpanded ? 'w-[70px] h-[70px]' : 'w-[320px] h-[320px]'}`} />
+                  <div className={`absolute bg-blue-500/5 rounded-full animate-pulse opacity-40 ${isEmbed && !isEmbedExpanded ? 'w-[60px] h-[60px]' : 'w-[260px] h-[260px]'}`} />
                 </>
               )}
               {/* Concentric Pulse rings while speaking */}
               {micStatus === "Speaking..." && (
                 <>
-                  <div className="absolute w-[300px] h-[300px] bg-emerald-500/10 rounded-full animate-ping opacity-25" />
-                  <div className="absolute w-[240px] h-[240px] bg-teal-500/5 rounded-full animate-pulse opacity-40" />
+                  <div className={`absolute bg-emerald-500/10 rounded-full animate-ping opacity-25 ${isEmbed && !isEmbedExpanded ? 'w-[70px] h-[70px]' : 'w-[300px] h-[300px]'}`} />
+                  <div className={`absolute bg-teal-500/5 rounded-full animate-pulse opacity-40 ${isEmbed && !isEmbedExpanded ? 'w-[60px] h-[60px]' : 'w-[240px] h-[240px]'}`} />
                 </>
               )}
 
               {/* The Glowing Orb */}
               <button
                 id="btn-mic-trigger"
-                onClick={handleMicToggle}
+                onClick={(e) => {
+                  if (isEmbed && !isEmbedExpanded) {
+                    toggleEmbed();
+                  } else {
+                    handleMicToggle(e);
+                  }
+                }}
                 disabled={
-                  micStatus === "Thinking..." ||
-                  micStatus === "Speaking..." ||
-                  isAgentLoading
+                  (!isEmbedExpanded && isEmbed ? false : (micStatus === "Thinking..." || micStatus === "Speaking..." || isAgentLoading))
                 }
-                className={`relative w-40 h-40 rounded-full flex items-center justify-center transition-all duration-700 focus:outline-none select-none ${
-                  micStatus === "Listening..."
+                className={`relative rounded-full flex items-center justify-center transition-all duration-700 focus:outline-none select-none 
+                  ${isEmbed && !isEmbedExpanded ? 'w-[60px] h-[60px]' : 'w-40 h-40'}
+                  ${
+                  micStatus === "Listening..." && (!isEmbed || isEmbedExpanded)
                     ? "bg-gradient-to-tr from-cyan-400 via-blue-500 to-indigo-500 shadow-[0_0_50px_rgba(6,182,212,0.5)] scale-105 cursor-pointer animate-[morph_6s_ease-in-out_infinite]"
-                    : micStatus === "Speaking..."
+                    : micStatus === "Speaking..." && (!isEmbed || isEmbedExpanded)
                     ? "bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-500 shadow-[0_0_50px_rgba(16,185,129,0.5)] cursor-not-allowed animate-[morph_4s_ease-in-out_infinite]"
-                    : micStatus === "Thinking..."
+                    : micStatus === "Thinking..." && (!isEmbed || isEmbedExpanded)
                     ? "bg-gradient-to-tr from-violet-600 via-fuchsia-500 to-indigo-600 shadow-[0_0_40px_rgba(139,92,246,0.4)] cursor-not-allowed animate-[spin_8s_linear_infinite]"
                     : "bg-gradient-to-tr from-zinc-800 via-zinc-900 to-zinc-850 border border-zinc-700/60 shadow-[0_0_30px_rgba(255,255,255,0.03)] hover:shadow-[0_0_40px_rgba(255,255,255,0.08)] cursor-pointer hover:scale-102"
                 }`}
               >
                 {/* Center symbol */}
-                <div className="transition-all duration-300">
+                <div className={`transition-all duration-300 ${isEmbed && !isEmbedExpanded ? 'scale-75' : ''}`}>
                   {micStatus === "Thinking..." ? (
                     <Sparkles className="w-10 h-10 text-white animate-pulse" />
                   ) : micStatus === "Speaking..." ? (
@@ -1878,7 +1923,7 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
               </button>
 
               {/* Minimalist Visualizer Waves */}
-              {micStatus === "Listening..." && (
+              {micStatus === "Listening..." && (!isEmbed || isEmbedExpanded) && (
                 <div
                   className="flex items-end gap-2 mt-12 h-8"
                   id="audio-amplitude-visualizer"
