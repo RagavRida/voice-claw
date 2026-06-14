@@ -4,8 +4,8 @@ import httpx
 from sqlalchemy import select
 from config import settings
 from database import AsyncSessionLocal
-from models import Agent
-from services import embeddings, vector_store, context_graph
+from models import Agent, Resource
+from services import embeddings, vector_store, context_graph, firecrawl
 
 logger = logging.getLogger("rag_service")
 
@@ -141,6 +141,63 @@ async def _query_via_sarvam(system_prompt: str, messages: list[dict]) -> str:
             raise RAGError(f"Sarvam Chat returned empty content. Raw: {res_data}")
         return answer.strip()
 
+async def _dynamic_scrape_and_ingest(agent_id: str, query_vector: list[float]) -> list[str]:
+    """
+    When KB has no chunks, find the agent's registered URL resources,
+    re-scrape them via Firecrawl, embed & store into ChromaDB,
+    then re-query and return relevant chunks.
+    """
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Resource).where(
+                    Resource.agent_id == agent_id,
+                    Resource.type == "url"
+                )
+            )
+            url_resources = result.scalars().all()
+
+        if not url_resources:
+            logger.info(f"No URL resources registered for agent {agent_id}. Skipping dynamic scrape.")
+            return []
+
+        all_chunks = []
+        for resource in url_resources:
+            url = resource.name
+            logger.info(f"Dynamic scraping URL: {url} for agent {agent_id}")
+            try:
+                scraped_chunks = await firecrawl.scrape_url(url)
+                if scraped_chunks:
+                    all_chunks.extend(scraped_chunks)
+
+                    # Embed and store into ChromaDB immediately
+                    vectors = await embeddings.embed_chunks(scraped_chunks)
+                    await vector_store.store_chunks(agent_id, resource.id, scraped_chunks, vectors)
+                    logger.info(f"Dynamically ingested {len(scraped_chunks)} chunks from {url}")
+
+                    # Update resource status
+                    async with AsyncSessionLocal() as db:
+                        res = await db.execute(select(Resource).where(Resource.id == resource.id))
+                        r = res.scalars().first()
+                        if r:
+                            r.status = "ready"
+                            r.chunk_count = len(scraped_chunks)
+                            await db.commit()
+            except Exception as scrape_err:
+                logger.warning(f"Failed to dynamically scrape {url}: {scrape_err}")
+                continue
+
+        if not all_chunks:
+            return []
+
+        # Re-query the now-populated vector store
+        chunks = await vector_store.query_chunks(agent_id, query_vector, n_results=settings.RAG_TOP_K)
+        return chunks
+
+    except Exception as e:
+        logger.error(f"Dynamic scrape and ingest failed for agent {agent_id}: {e}")
+        return []
+
 async def query_knowledge_base(agent_id: str, query_text: str, history: list[dict] = [], enabled_connectors: list[str] = [], source_lang: str = "en-IN") -> str:
     # 1. Fetch Agent configuration from database
     async with AsyncSessionLocal() as db:
@@ -161,9 +218,15 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
 
         # 3. Retrieve top matching document chunks from ChromaDB
         chunks = await vector_store.query_chunks(agent_id, query_vector, n_results=settings.RAG_TOP_K)
+
+        # 3b. If no chunks found, auto-scrape the agent's registered URLs and ingest
+        if not chunks:
+            logger.info(f"No KB chunks for agent {agent_id}. Attempting dynamic website scrape...")
+            chunks = await _dynamic_scrape_and_ingest(agent_id, query_vector)
+
         context = "\n\n".join(chunks) if chunks else settings.RAG_NO_CONTEXT_MESSAGE
 
-        # Flag knowledge gap if no relevant chunks found
+        # Flag knowledge gap if still no relevant chunks found
         rag_context_found = bool(chunks)
         if not chunks:
             from services import insights as insights_svc
