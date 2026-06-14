@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sliders, Calendar, Send, ShoppingBag, Database, Plus, Check, Zap } from 'lucide-react';
+import { Sliders, Calendar, Send, ShoppingBag, Database, Plus, Check, Zap, MessageCircle } from 'lucide-react';
 import { useConnectors } from '../stores/useConnectors';
 
 export function ConnectorsPanel() {
