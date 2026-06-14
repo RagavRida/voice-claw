@@ -16,7 +16,7 @@ async def speech_to_text_translate(
     prompt: str = None,
 ) -> dict:
     """
-    Transcribe speech audio using Sarvam AI SDK (saaras:v3) with auto language detection.
+    Transcribe speech audio using Sarvam AI API (saaras:v3) with auto language detection.
     Preserves the original language of the speaker for multilingual support.
 
     Args:
@@ -27,47 +27,45 @@ async def speech_to_text_translate(
     if audio_format is None:
         audio_format = settings.DEFAULT_AUDIO_FORMAT
 
-    import io
-    import asyncio
-    from sarvamai import SarvamAI
+    url = f"{settings.SARVAM_BASE_URL}/speech-to-text"
+    headers = {
+        "API-Subscription-Key": settings.SARVAM_API_KEY
+    }
+    
+    # Map webm to correct content type so Sarvam API accepts it
+    mime_type = f"audio/{audio_format}"
+    if audio_format == "webm":
+        mime_type = "audio/webm"
+        
+    files = {
+        "file": (f"audio.{audio_format}", audio_bytes, mime_type)
+    }
+    data = {
+        "model": "saaras:v3", # v3 supports auto-detect and 24 languages
+        "language_code": "unknown", # auto-detect
+    }
 
     try:
-        client = SarvamAI(api_subscription_key=settings.SARVAM_API_KEY)
+        async with httpx.AsyncClient(timeout=settings.SARVAM_API_TIMEOUT) as client:
+            response = await client.post(url, headers=headers, files=files, data=data)
+            
+            if response.status_code != 200:
+                logger.error(f"Sarvam STT failed: {response.status_code} - {response.text}")
+                raise SarvamAPIError(f"Sarvam STT returned status {response.status_code}", response.text)
 
-        # Create a file-like object from bytes
-        audio_file = io.BytesIO(audio_bytes)
-        audio_file.name = f"audio.{audio_format}"
+            result = response.json()
+            logger.info(f"Sarvam STT direct API response: {result}")
 
-        # Run the synchronous SDK call in a thread to keep async compatibility
-        response = await asyncio.to_thread(
-            client.speech_to_text.transcribe,
-            file=audio_file,
-            model="saaras:v3",
-        )
-
-        logger.info(f"Sarvam STT SDK response: {response}")
-
-        # The SDK returns an object — extract transcript
-        transcript = ""
-        source_lang = ""
-        if hasattr(response, "transcript"):
-            transcript = response.transcript or ""
-        elif isinstance(response, dict):
-            transcript = response.get("transcript", "")
-
-        if hasattr(response, "source_language_code"):
-            source_lang = response.source_language_code or ""
-        elif isinstance(response, dict):
-            source_lang = response.get("source_language_code", "")
-
-        return {
-            "transcript": transcript,
-            "source_language_code": source_lang,
-        }
+            return {
+                "transcript": result.get("transcript", ""),
+                "source_language_code": result.get("language_code", ""),
+            }
+    except httpx.HTTPError as e:
+        logger.error(f"HTTP error in speech_to_text_translate: {e}", exc_info=True)
+        raise SarvamAPIError("Network error calling Sarvam STT API", str(e))
     except Exception as e:
-        logger.error(f"Sarvam STT SDK error: {e}", exc_info=True)
-        raise SarvamAPIError(f"Sarvam STT failed: {e}", str(e))
-
+        logger.error(f"Unexpected error in speech_to_text_translate: {e}", exc_info=True)
+        raise SarvamAPIError("Unexpected error calling Sarvam STT API", str(e))
 
 async def speech_to_text(
     audio_bytes: bytes,

@@ -190,14 +190,17 @@ async def check_connection_status(toolkit_slug: str) -> bool:
     return False
 
 
+# Cache for tool schemas to avoid 3-4s latency on every query
+_tools_cache: dict[str, dict] = {}
+_tools_cache_time: dict[str, float] = {}
+
 async def get_tools_for_agent(agent_id: str) -> list:
     """
     Get enabled connectors for the agent, search for relevant tools
     via Composio MCP, and return tool definitions for Gemini to use.
-
-    Returns a list of tool dicts with name, description, and parameters
-    formatted for google.genai function calling.
+    Uses an in-memory cache to ensure low latency for voice interactions.
     """
+    import time
     enabled_toolkits = []
 
     # 1. Load enabled connectors from DB
@@ -214,7 +217,13 @@ async def get_tools_for_agent(agent_id: str) -> list:
     if not enabled_toolkits:
         return []
 
-    # 2. Search for tools via MCP for each enabled toolkit
+    # 2. Check cache (valid for 1 hour)
+    cache_key = ",".join(sorted(enabled_toolkits))
+    current_time = time.time()
+    if cache_key in _tools_cache and current_time - _tools_cache_time.get(cache_key, 0) < 3600:
+        return _tools_cache[cache_key]
+
+    # 3. Search for tools via MCP for each enabled toolkit
     all_tools = []
     for toolkit in enabled_toolkits:
         use_case_map = {
@@ -227,6 +236,10 @@ async def get_tools_for_agent(agent_id: str) -> list:
         result = await search_tools(use_case, agent_id)
         if result:
             all_tools.append({"toolkit": toolkit, "search_result": result})
+
+    # Save to cache
+    _tools_cache[cache_key] = all_tools
+    _tools_cache_time[cache_key] = current_time
 
     return all_tools
 

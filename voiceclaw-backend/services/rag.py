@@ -157,6 +157,11 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
                 f"Do NOT translate to English. Keep all factual context from earlier turns."
             )
 
+        system_prompt += (
+            f"\n\nCONVERSATIONAL STYLE: You are a voice assistant. Keep your answers brief, conversational, and natural. "
+            f"Always end your response with ONE short, relevant follow-up question to keep the conversation going."
+        )
+
         system_prompt += f"\n\nContext:\n{context}"
 
         # 4c. Inject context graph (entity relationships) if available

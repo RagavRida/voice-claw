@@ -1053,31 +1053,6 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
       if (!qRes.ok) throw new Error("Query failed");
       let { answer_text } = await qRes.json();
 
-      // 5. AI enrichment — append one natural follow-up question
-      try {
-        const langHint = language !== "en-IN" ? ` The user is speaking in ${language}. You MUST respond in that same language, not English.` : "";
-        const enrichRes = await fetch(getApiUrl("/api/chat"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            system: `You are a voice assistant for ${agentInfo?.business_name || "this business"}. Take the answer and append ONE short natural follow-up question. Max 2 sentences.${langHint} Respond in the EXACT same language as the answer text. IMPORTANT: If the answer contains any XML tags like <action .../>, preserve them exactly as-is at the end.`,
-            messages: [
-              {
-                role: "user",
-                content: `Answer: ${answer_text}. Append a follow-up question in the same language.`,
-              },
-            ],
-          }),
-        });
-        if (enrichRes.ok) {
-          const enrichData = await enrichRes.json();
-          const enriched = enrichData.content?.[0]?.text;
-          if (enriched) answer_text = enriched;
-        }
-      } catch {
-        /* enrichment failed — use original answer_text */
-      }
-
       // 5b. Parse and extract action tags BEFORE sending to TTS
       const { cleanText: spokenText, action } = parseActionTags(answer_text);
       if (action) {

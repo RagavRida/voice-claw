@@ -51,43 +51,8 @@ async def query_agent(
             composio_tools = await get_tools_for_agent(request.agent_id)
             
             # Use Gemini as the reasoning layer for tool dispatch if tools exist.
-            if composio_tools:
-                try:
-                    client = genai.Client(api_key=settings.GEMINI_API_KEY)
-                    
-                    # Format history for Gemini
-                    contents = []
-                    for msg in request.history or []:
-                        role = "user" if msg.get("role") == "user" else "model"
-                        contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg.get("content", ""))]))
-                    contents.append(types.Content(role="user", parts=[types.Part.from_text(text=request.text)]))
-                    
-                    response = client.models.generate_content(
-                        model=settings.GEMINI_MODEL,
-                        contents=contents,
-                        config=types.GenerateContentConfig(
-                            tools=composio_tools,
-                            temperature=0.1
-                        )
-                    )
-                    
-                    if response.function_calls:
-                        function_call = response.function_calls[0]
-                        tool_called = function_call.name
-                        params = function_call.args
-                        
-                        logger.info(f"Gemini decided to call tool: {tool_called} with params: {params}")
-                        
-                        tool_result_text = await execute_tool_call(
-                            tool_name=tool_called,
-                            params=params,
-                            entity_id=request.agent_id
-                        )
-                        
-                        request.history.append({"role": "assistant", "content": f"Executed tool {tool_called}."})
-                        request.text = f"{request.text}\n[System: Tool returned: {tool_result_text}]"
-                except Exception as e:
-                    logger.error(f"Gemini tool dispatch failed: {e}", exc_info=True)
+            # DEPRECATED: Removed to eliminate 2-4s latency penalty. RAG model handles intent via <action> tags.
+            pass
 
             # 3. Call rag.query_knowledge_base
             answer_text = await rag.query_knowledge_base(
