@@ -190,7 +190,11 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
         # Assemble full list of message logs
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(history_messages)
-        messages.append({"role": "user", "content": query_text})
+        
+        # Append reminder to the final user message to prevent hallucination 
+        # (models often forget the system prompt if history is long)
+        final_query = f"{query_text}\n\n[System Reminder: You MUST ONLY use the provided Context to answer. If the answer is not in the Context, say you don't know.]"
+        messages.append({"role": "user", "content": final_query})
 
         # 6. Route to the appropriate AI provider (Groq first → Gemini → Sarvam)
         if settings.GROQ_API_KEY:

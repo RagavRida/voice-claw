@@ -997,9 +997,13 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
       // --- Setup Voice Activity Detection (VAD) ---
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       vadAudioContextRef.current = audioCtx;
+      if (audioCtx.state === "suspended") {
+        await audioCtx.resume();
+      }
+      
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 512;
-      analyser.minDecibels = -50;
+      analyser.minDecibels = -70; // Lower threshold to detect quieter speech
       const source = audioCtx.createMediaStreamSource(stream);
       source.connect(analyser);
 
@@ -1017,13 +1021,15 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
         }
         const average = sum / bufferLength;
 
-        if (average > 10) { // Volume threshold
+        // Lower average threshold since we lowered minDecibels
+        if (average > 5) {
           hasSpoken = true;
           silenceStartRef.current = Date.now();
         } else {
           const silentDuration = Date.now() - silenceStartRef.current;
-          // Stop after 1.5s of silence (if spoken), or 5s if they never spoke
-          if ((hasSpoken && silentDuration > 1500) || (!hasSpoken && silentDuration > 5000)) {
+          // Stop after 2s of silence (if spoken), or 7s if they never spoke
+          if ((hasSpoken && silentDuration > 2000) || (!hasSpoken && silentDuration > 7000)) {
+            console.log("VAD Auto-stop triggered.");
             handleMicStop();
           }
         }
