@@ -290,7 +290,6 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
                 f"\n\nIMPORTANT LANGUAGE INSTRUCTION: The user's CURRENT message is in {detected_lang_name} ({source_lang}). "
                 f"You MUST respond in {detected_lang_name} — even if previous messages in the conversation were in a different language. "
                 f"The user may switch languages mid-conversation; always match their LATEST language. "
-                f"If the user mixes {detected_lang_name} with English (code-mixing/code-switching), respond in the same mixed style. "
                 f"Do NOT translate your response to English. Keep all factual context from earlier turns."
             )
         elif source_lang and source_lang != "en-IN":
@@ -299,6 +298,12 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
                 f"Respond in the SAME language as this message, even if earlier turns were in a different language. "
                 f"Do NOT translate to English. Keep all factual context from earlier turns."
             )
+
+        system_prompt += (
+            f"\n\nCODE-MIXING RULE: If the user mixes multiple languages in their speech (for example, mixing English with Hindi/Hinglish, "
+            f"or mixing English with another regional language), you MUST mirror their exact mixed language style in your response. "
+            f"Do not respond in pure English if they used mixed language."
+        )
 
         system_prompt += (
             f"\n\nCONVERSATIONAL STYLE: You are a voice assistant. Keep your answers brief, conversational, and natural. "
