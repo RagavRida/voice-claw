@@ -797,6 +797,11 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
   const recordedChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const talkChatEndRef = useRef<HTMLDivElement | null>(null);
+  
+  // VAD Refs
+  const vadAudioContextRef = useRef<AudioContext | null>(null);
+  const vadIntervalRef = useRef<number | null>(null);
+  const silenceStartRef = useRef<number>(0);
 
   useEffect(() => {
     talkChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -965,14 +970,51 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
         await processAudioFlow(blob);
       };
       mr.start();
+      
       // Auto-stop recording at 25 seconds (Sarvam STT has 30s limit)
       (mr as any)._autoStopTimer = setTimeout(() => {
         if (mr.state === "recording") {
-          mr.stop();
-          streamRef.current?.getTracks().forEach((t) => t.stop());
-          streamRef.current = null;
+          handleMicStop();
         }
       }, 25000);
+
+      // --- Setup Voice Activity Detection (VAD) ---
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      vadAudioContextRef.current = audioCtx;
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.minDecibels = -50;
+      const source = audioCtx.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      
+      let hasSpoken = false;
+      silenceStartRef.current = Date.now();
+
+      const checkSilence = () => {
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          sum += dataArray[i];
+        }
+        const average = sum / bufferLength;
+
+        if (average > 10) { // Volume threshold
+          hasSpoken = true;
+          silenceStartRef.current = Date.now();
+        } else {
+          const silentDuration = Date.now() - silenceStartRef.current;
+          // Stop after 1.5s of silence (if spoken), or 5s if they never spoke
+          if ((hasSpoken && silentDuration > 1500) || (!hasSpoken && silentDuration > 5000)) {
+            handleMicStop();
+          }
+        }
+      };
+
+      vadIntervalRef.current = window.setInterval(checkSilence, 100);
+
     } catch {
       showToast("Something went wrong. Try again.", "error");
       setMicStatus("Tap to speak");
@@ -981,6 +1023,17 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
 
   const handleMicStop = (e?: MouseEvent | TouchEvent) => {
     if (e) e.preventDefault();
+    
+    // Clean up VAD
+    if (vadIntervalRef.current) {
+      window.clearInterval(vadIntervalRef.current);
+      vadIntervalRef.current = null;
+    }
+    if (vadAudioContextRef.current) {
+      vadAudioContextRef.current.close().catch(() => {});
+      vadAudioContextRef.current = null;
+    }
+
     if (mediaRecorderRef.current?.state === "recording")
       mediaRecorderRef.current.stop();
     // Clear auto-stop timer
