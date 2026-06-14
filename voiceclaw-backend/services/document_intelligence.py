@@ -60,10 +60,13 @@ async def _sarvam_doc_digitization(file_bytes: bytes, filename: str) -> list[str
             f"{base}/doc-digitization/job/v1",
             headers=headers,
             json={
-                "output_format": settings.SARVAM_DOC_OUTPUT_FORMAT,
+                "job_parameters": {
+                    "language": "en-IN",
+                    "output_format": settings.SARVAM_DOC_OUTPUT_FORMAT,
+                }
             },
         )
-        if create_resp.status_code != 200:
+        if create_resp.status_code not in (200, 202):
             raise Exception(
                 f"Create job failed ({create_resp.status_code}): {create_resp.text}"
             )
@@ -89,13 +92,19 @@ async def _sarvam_doc_digitization(file_bytes: bytes, filename: str) -> list[str
         upload_data = upload_url_resp.json()
 
         # Extract the presigned upload URL from the response
-        upload_urls = upload_data.get("upload_urls") or upload_data.get("urls") or []
+        # Sarvam returns: {"upload_urls": {"filename": {"file_url": "https://...", "file_metadata": null}}}
+        upload_urls = upload_data.get("upload_urls") or upload_data.get("urls") or {}
+        presigned_url = None
         if isinstance(upload_urls, dict):
-            # Format: {"filename": "url"}
-            presigned_url = list(upload_urls.values())[0] if upload_urls else None
+            first_val = list(upload_urls.values())[0] if upload_urls else None
+            if isinstance(first_val, dict):
+                presigned_url = first_val.get("file_url") or first_val.get("url")
+            elif isinstance(first_val, str):
+                presigned_url = first_val
         elif isinstance(upload_urls, list) and upload_urls:
-            presigned_url = upload_urls[0] if isinstance(upload_urls[0], str) else upload_urls[0].get("url")
-        else:
+            item = upload_urls[0]
+            presigned_url = item.get("file_url") or item.get("url") if isinstance(item, dict) else item
+        if not presigned_url:
             presigned_url = upload_data.get("url")
 
         if not presigned_url:
@@ -130,7 +139,7 @@ async def _sarvam_doc_digitization(file_bytes: bytes, filename: str) -> list[str
             f"{base}/doc-digitization/job/v1/{job_id}/start",
             headers=headers,
         )
-        if start_resp.status_code != 200:
+        if start_resp.status_code not in (200, 202):
             raise Exception(
                 f"Start job failed ({start_resp.status_code}): {start_resp.text}"
             )
@@ -143,11 +152,17 @@ async def _sarvam_doc_digitization(file_bytes: bytes, filename: str) -> list[str
 
         for attempt in range(max_polls):
             await asyncio.sleep(poll_interval)
+            # Try /status endpoint first (per API docs), fallback to bare job_id
             status_resp = await client.get(
-                f"{base}/doc-digitization/job/v1/{job_id}",
+                f"{base}/doc-digitization/job/v1/{job_id}/status",
                 headers=headers,
             )
-            if status_resp.status_code != 200:
+            if status_resp.status_code not in (200, 202):
+                status_resp = await client.get(
+                    f"{base}/doc-digitization/job/v1/{job_id}",
+                    headers=headers,
+                )
+            if status_resp.status_code not in (200, 202):
                 logger.warning(
                     f"Poll attempt {attempt + 1} failed ({status_resp.status_code}): {status_resp.text}"
                 )
