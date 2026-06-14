@@ -24,11 +24,6 @@ export function ConnectorsPanel() {
     toggle(key);
   };
 
-  const handleConnect = async (key: string) => {
-    // Start OAuth flow for Composio integrations
-    await initiateConnection(key);
-  };
-
   const handleSaveCustom = async () => {
     if (!customName || !customWebhookUrl) return;
     const key = `custom_${customName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
@@ -67,6 +62,19 @@ export function ConnectorsPanel() {
     const lastStatus = connectors[key]?.last_status;
     const accountLabel = connectors[key]?.account_label;
     
+    const handleToggle = async () => {
+      if (isCustom) {
+        // Custom connectors just toggle locally
+        handleToggleCustom(key);
+      } else if (!isConnected) {
+        // Built-in: toggling ON → start OAuth flow
+        await initiateConnection(key);
+      } else {
+        // Built-in: toggling OFF → disconnect
+        toggle(key);
+      }
+    };
+    
     return (
       <div className={`rounded-xl border transition-all duration-300 overflow-hidden ${isConnected ? 'border-emerald-200 bg-emerald-50/20' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
         <div className="flex items-center justify-between px-4 py-3.5 relative z-10 bg-inherit">
@@ -84,30 +92,13 @@ export function ConnectorsPanel() {
           </div>
           <div className="flex items-center gap-3">
             <span className={`w-2 h-2 rounded-full transition-colors ${getStatusColor(isConnected, lastStatus)}`} title={lastStatus || (isConnected ? 'Connected' : 'Disabled')} />
-            {isCustom ? (
-              <button
-                onClick={() => handleToggleCustom(key)}
-                className={`relative w-10 h-[22px] rounded-full transition-colors duration-300 cursor-pointer ${isConnected ? 'bg-emerald-500' : 'bg-slate-300'}`}
-              >
-                <span className={`absolute top-[3px] left-[3px] w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-300 ease-spring ${isConnected ? 'translate-x-[18px]' : ''}`} />
-              </button>
-            ) : (
-              isConnected ? (
-                <button
-                  onClick={() => handleConnect(key)}
-                  className="px-3 py-1.5 text-[10px] font-bold bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
-                >
-                  Reconnect
-                </button>
-              ) : (
-                <button
-                  onClick={() => handleConnect(key)}
-                  className="px-3 py-1.5 text-[10px] font-bold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors cursor-pointer"
-                >
-                  Connect
-                </button>
-              )
-            )}
+            <button
+              onClick={handleToggle}
+              className={`relative w-10 h-[22px] rounded-full transition-colors duration-300 cursor-pointer ${isConnected ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              title={isConnected ? `Disconnect ${title}` : `Connect ${title}`}
+            >
+              <span className={`absolute top-[3px] left-[3px] w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-300 ease-spring ${isConnected ? 'translate-x-[18px]' : ''}`} />
+            </button>
           </div>
         </div>
         
