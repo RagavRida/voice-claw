@@ -32,7 +32,14 @@ async def _query_via_ollama(system_prompt: str, messages: list[dict]) -> str:
         if response.status_code != 200:
             raise RAGError(f"Ollama API error {response.status_code}: {response.text[:300]}")
         data = response.json()
-        answer = data.get("message", {}).get("content", "")
+        message = data.get("message", {})
+        answer = message.get("content", "")
+        
+        # Some reasoning models (like Gemma 4) put their reasoning in "thinking" and leave content empty
+        # when they decide to refuse based on strict system prompts.
+        if not answer and "thinking" in message:
+            return "I don't have information about that in my knowledge base."
+            
         if not answer:
             raise RAGError(f"Empty response from Ollama. Raw: {data}")
         return answer.strip()
