@@ -251,6 +251,9 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
             f"ask them what they need help with by offering core services highly relevant to a {business_type} "
             f"(for example, if you are a Restaurant, you might ask if they want to book a table, check food availability, or place an order). "
             f"Once the customer states their intent, adapt your behavior to guide them through that specific process step-by-step.\n\n"
+            f"INFORMATION GATHERING & TOOLS: If the user's intent requires an action (e.g., booking a table, scheduling an appointment), "
+            f"you MUST ask for all necessary details (like date, time, party size, or contact info) ONE question at a time. "
+            f"Do NOT attempt to use an action tool until you have gathered all required parameters from the user.\n\n"
         )
         
         if greeting:
