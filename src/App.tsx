@@ -192,6 +192,9 @@ export default function App() {
 
   const [chatInput, setChatInput] = useState("");
   const [isAiTyping, setIsAiTyping] = useState(false);
+  const [isBuilderContinuousMode, setIsBuilderContinuousMode] = useState(false);
+  const [isBuilderSpeaking, setIsBuilderSpeaking] = useState(false);
+  const builderAudioRef = useRef<HTMLAudioElement | null>(null);
   const [isBuilderRecording, setIsBuilderRecording] = useState(false);
   const builderMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const builderAudioChunksRef = useRef<Blob[]>([]);
@@ -681,6 +684,10 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
           type: "text" as const,
         },
       ]);
+      
+      if (isBuilderContinuousMode) {
+        playBuilderVoice(cleanText);
+      }
 
       // Trigger upload widget after config is complete
       if (rawText.includes("<config>")) {
@@ -696,6 +703,52 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
   };
 
   // ── TALK AND BUILD (STT) LOGIC ─────────────────────────────────────────────
+  const playBuilderVoice = async (text: string) => {
+    setIsBuilderSpeaking(true);
+    try {
+      const ttsRes = await fetch(`${API_BASE_URL}/api/tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          target_language_code: primaryLanguage || "en-IN",
+        }),
+      });
+
+      if (!ttsRes.ok) throw new Error("TTS failed");
+      const audioBlob = await ttsRes.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+
+      if (builderAudioRef.current) {
+        builderAudioRef.current.pause();
+      }
+
+      const audio = new Audio(audioUrl);
+      builderAudioRef.current = audio;
+
+      audio.onended = () => {
+        setIsBuilderSpeaking(false);
+        if (isBuilderContinuousMode) {
+          // Add a tiny delay to prevent echo/feedback looping
+          setTimeout(() => {
+            if (!isBuilderRecording) handleToggleBuilderRecording(true);
+          }, 500);
+        }
+      };
+
+      await audio.play();
+    } catch (err) {
+      console.error("Builder TTS playback failed:", err);
+      setIsBuilderSpeaking(false);
+      // Fallback: if TTS fails, still try to listen if continuous
+      if (isBuilderContinuousMode) {
+        setTimeout(() => {
+          if (!isBuilderRecording) handleToggleBuilderRecording(true);
+        }, 500);
+      }
+    }
+  };
+
   const stopBuilderRecording = async () => {
     if (
       builderMediaRecorderRef.current &&
@@ -719,13 +772,18 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
     setIsBuilderRecording(false);
   };
 
-  const handleToggleBuilderRecording = async () => {
-    if (isBuilderRecording) {
+  const handleToggleBuilderRecording = async (forceStart = false) => {
+    if (isBuilderRecording && !forceStart) {
       await stopBuilderRecording();
+      setIsBuilderContinuousMode(false);
       return;
     }
 
     try {
+      if (!isBuilderContinuousMode && !forceStart) {
+        setIsBuilderContinuousMode(true);
+      }
+      
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       builderMicrophoneStreamRef.current = stream;
       
@@ -746,6 +804,7 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
           const formData = new FormData();
           formData.append("file", audioBlob, "audio.webm");
           formData.append("audio_format", "webm");
+          formData.append("agent_id", "builder"); // Fix STT requirement
           
           const response = await fetch(`${API_BASE_URL}/api/stt`, {
             method: "POST",
@@ -756,13 +815,20 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
           
           const result = await response.json();
           if (result.transcript) {
-            setChatInput((prev) => (prev ? prev + " " + result.transcript : result.transcript));
+            if (isBuilderContinuousMode) {
+              // Auto-send the transcribed text in continuous flow
+              handleSendChatMessage(result.transcript);
+            } else {
+              setChatInput((prev) => (prev ? prev + " " + result.transcript : result.transcript));
+            }
           }
         } catch (err) {
           console.error("Talk & Build transcription error:", err);
           showToast("Transcription failed", "error");
         } finally {
-          setIsAiTyping(false);
+          if (!isBuilderContinuousMode) {
+            setIsAiTyping(false);
+          }
         }
       };
 
@@ -1947,16 +2013,18 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
                       />
                       <button
                         type="button"
-                        onClick={handleToggleBuilderRecording}
-                        disabled={isAiTyping}
+                        onClick={() => handleToggleBuilderRecording(false)}
+                        disabled={isAiTyping || isBuilderSpeaking}
                         className={`p-3 rounded-xl transition-all cursor-pointer disabled:opacity-40 shrink-0 ${
                           isBuilderRecording 
                             ? "bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]" 
-                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                            : isBuilderContinuousMode 
+                              ? "bg-blue-500 text-white shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                         }`}
-                        title="Talk to Build"
+                        title="Continuous Voice Mode"
                       >
-                        <Mic className="w-4 h-4" />
+                        {isBuilderSpeaking ? <Volume2 className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
                       </button>
                     </div>
                     <button
