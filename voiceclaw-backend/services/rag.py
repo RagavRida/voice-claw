@@ -13,33 +13,42 @@ class RAGError(Exception):
     pass
 
 async def _query_via_groq(system_prompt: str, messages: list[dict]) -> str:
-    """Use Groq API (OpenAI-compatible) for chat completion."""
+    """Use Groq API (OpenAI-compatible) for chat completion with retry."""
     groq_key = settings.GROQ_API_KEY
     if not groq_key:
         raise RAGError("GROQ_API_KEY not set")
 
+    # Try the big model first, fall back to smaller model on rate-limit
+    models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {groq_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "llama-3.3-70b-versatile",
-                "messages": messages,
-                "max_tokens": settings.RAG_MAX_TOKENS,
-                "temperature": settings.RAG_TEMPERATURE,
-            },
-        )
-        if response.status_code != 200:
-            raise RAGError(f"Groq API error {response.status_code}: {response.text[:200]}")
+        for model in models_to_try:
+            response = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {groq_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "max_tokens": settings.RAG_MAX_TOKENS,
+                    "temperature": settings.RAG_TEMPERATURE,
+                },
+            )
+            if response.status_code == 429:
+                logger.warning(f"Groq rate-limited on {model}, trying next model...")
+                continue
+            if response.status_code != 200:
+                raise RAGError(f"Groq API error {response.status_code}: {response.text[:200]}")
 
-        data = response.json()
-        answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        if not answer:
-            raise RAGError("Empty response from Groq API.")
-        return answer.strip()
+            data = response.json()
+            answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if not answer:
+                raise RAGError("Empty response from Groq API.")
+            return answer.strip()
+    
+    raise RAGError("All Groq models rate-limited.")
 
 async def _query_via_gemini(system_prompt: str, messages: list[dict], query_text: str) -> str:
     """Use Google Gemini API for chat completion."""
@@ -94,11 +103,17 @@ async def _query_via_sarvam(system_prompt: str, messages: list[dict]) -> str:
             raise RAGError(f"Sarvam Chat completions API error {response.status_code}: {response.text}")
 
         res_data = response.json()
+        logger.info(f"Sarvam Chat raw response: {res_data}")
         choices = res_data.get("choices", [])
         if not choices:
             raise RAGError("Empty response choices from Sarvam Chat completions.")
 
-        answer = choices[0].get("message", {}).get("content", "")
+        answer = choices[0].get("message", {}).get("content")
+        if not answer:
+            # Try alternative response shapes
+            answer = choices[0].get("text", "") or res_data.get("output", "")
+        if not answer:
+            raise RAGError(f"Sarvam Chat returned empty content. Raw: {res_data}")
         return answer.strip()
 
 async def query_knowledge_base(agent_id: str, query_text: str, history: list[dict] = [], enabled_connectors: list[str] = [], source_lang: str = "en-IN") -> str:
