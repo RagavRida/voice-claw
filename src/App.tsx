@@ -604,27 +604,17 @@ THEN recommend connectors. Based on the business type, pick the MOST relevant on
 - "shopify" — Shopify / Catalog (for shops, restaurants, e-commerce — anything selling products)
 - "hubspot" — HubSpot / CRM (for tracking leads, customer info, follow-ups)
 
-IMPORTANT: Do NOT auto-enable anything. Always list your recommendations clearly and ASK for confirmation.
-
 Your message MUST follow this exact pattern:
 1. Output the hidden tag: <tools>calendar,whatsapp</tools> (with your recommended tools)
-2. Then write a clear message listing each recommendation with WHY it's useful for THEIR specific business. Example:
+2. Then write a brief message listing each recommendation and directing them to the Connectors Panel. Example:
 
 "I'd recommend connecting these for [business name]:
-
 📅 **Google Calendar** — so customers can book appointments directly
 💬 **WhatsApp** — to send booking confirmations automatically
 
-Would you like me to connect these? You can say 'yes to all', or tell me which ones you want (e.g., 'just Calendar')."
+You can enable these anytime using the **Connectors & Tools** panel on the right. Now, let's get your agent trained on your business knowledge!"
 
-When the user confirms:
-- If they say "yes", "sure", "yes to all", "connect all", "haan", "sab laga do" → enable ALL recommended tools
-- If they pick specific ones (e.g., "just WhatsApp" or "only calendar") → enable only those
-- If they say "no", "not now", "skip" → skip and move to the upload step
-
-Output: <enable_tools>calendar,whatsapp</enable_tools> with ONLY the confirmed tools.
-
-After confirmation (or skip), move on to the knowledge upload step — do NOT keep asking about connectors.
+Do not ask for confirmation or wait for a reply about tools.
 
 Never ask two unrelated questions at once. If user answers partially, ask only for what's missing.`,
           messages: newHistory,
@@ -649,21 +639,10 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
         if (suggested.includes("hubspot")) { setIsHubspotConnected(false); setShowConfigFor("hubspot"); }
       }
 
-      // Parse tool enablement — user confirmed, auto-connect
-      const enableMatch = rawText.match(/<enable_tools>([\s\S]*?)<\/enable_tools>/);
-      if (enableMatch) {
-        const enabled = enableMatch[1].split(",").map((t: string) => t.trim().toLowerCase());
-        if (enabled.includes("calendar")) { setIsCalendarConnected(true); showToast("📅 Google Calendar connected!", "success"); }
-        if (enabled.includes("whatsapp")) { setIsTwilioConnected(true); showToast("💬 WhatsApp connected!", "success"); }
-        if (enabled.includes("shopify")) { setIsShopifyConnected(true); showToast("🛍️ Shopify connected!", "success"); }
-        if (enabled.includes("hubspot")) { setIsHubspotConnected(true); showToast("🔗 HubSpot connected!", "success"); }
-      }
-
-      // Strip <config>, <tools>, and <enable_tools> blocks from the displayed message
+      // Strip <config> and <tools> blocks from the displayed message
       const cleanText = rawText
         .replace(/<config>[\s\S]*?<\/config>/g, "")
         .replace(/<tools>[\s\S]*?<\/tools>/g, "")
-        .replace(/<enable_tools>[\s\S]*?<\/enable_tools>/g, "")
         .trim();
 
       setConversationHistory((prev) => [
