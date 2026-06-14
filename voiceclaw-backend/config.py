@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -7,6 +8,8 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
     FIRECRAWL_API_KEY: str = ""
+    ENCRYPTION_KEY: Optional[str] = None
+    COMPOSIO_API_KEY: str = ""
 
     # ── Infrastructure ──
     DATABASE_URL: str = "sqlite:///./voiceclaw.db"

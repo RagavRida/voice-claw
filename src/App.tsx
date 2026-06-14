@@ -30,7 +30,12 @@ import {
   Sliders,
   MessageSquare,
   Users,
+  Database,
+  Zap,
 } from "lucide-react";
+import { ConnectorsPanel } from './components/ConnectorsPanel';
+import { InsightsPanel } from './components/InsightsPanel';
+import { useConnectors } from './stores/useConnectors';
 
 // ─── API URL HELPER ────────────────────────────────────────────────────────────
 const getApiUrl = (endpoint: string): string => {
@@ -380,18 +385,84 @@ export default function App() {
   };
 
   const injectUploadWidget = () => {
-    const introText =
-      "Great! Now let's teach your agent about your business. Upload your menu, price list, or any PDF your customers would ask about. You can also paste your website URL.";
+    // Smart suggestions based on business type
+    const suggestions: Record<string, { items: string[]; intro: string }> = {
+      restaurant: {
+        intro: "Let's train your agent on your restaurant! Here's what I need:",
+        items: ["📋 Your menu (PDF or website link)", "⏰ Operating hours & location", "💰 Price list or special offers", "📦 Delivery/takeaway policies"],
+      },
+      clinic: {
+        intro: "Let's set up your clinic agent! Upload these so your agent can answer patient queries:",
+        items: ["🩺 List of services & treatments", "👨‍⚕️ Doctor profiles & specializations", "⏰ Consultation hours & fees", "📋 Booking policies & insurance info"],
+      },
+      hospital: {
+        intro: "Let's configure your hospital agent! Upload or paste:",
+        items: ["🏥 Department list & specialties", "👨‍⚕️ Doctor directory", "⏰ OPD timings & visiting hours", "💰 Package rates & insurance partnerships"],
+      },
+      salon: {
+        intro: "Let's get your salon agent ready! I need:",
+        items: ["💇 Services & price menu", "⏰ Working hours & days off", "👩‍🎨 Stylist profiles (optional)", "📋 Booking & cancellation policies"],
+      },
+      shop: {
+        intro: "Let's train your shop agent! Upload:",
+        items: ["🛍️ Product catalog or inventory list", "💰 Price list", "⏰ Store hours & location", "🚚 Delivery/return policies"],
+      },
+      hotel: {
+        intro: "Let's set up your hotel agent! Upload these:",
+        items: ["🏨 Room types & tariffs", "🍽️ Amenities & dining options", "⏰ Check-in/check-out policies", "📋 Cancellation & booking policies"],
+      },
+      gym: {
+        intro: "Let's set up your fitness center agent! I need:",
+        items: ["💪 Membership plans & pricing", "⏰ Class schedule & timings", "🏋️ Facilities & trainer info", "📋 Enrollment & cancellation policies"],
+      },
+      school: {
+        intro: "Let's set up your education agent! Upload:",
+        items: ["📚 Courses & programs offered", "💰 Fee structure", "📅 Admission process & deadlines", "📋 Exam schedules & policies"],
+      },
+      ecommerce: {
+        intro: "Let's train your e-commerce agent! Upload:",
+        items: ["🛍️ Product catalog with descriptions", "💰 Pricing & offers", "🚚 Shipping & delivery policies", "↩️ Return & refund policies"],
+      },
+    };
+
+    // Match business type to suggestions (fuzzy)
+    const bt = (businessType || "").toLowerCase();
+    let matched = suggestions["shop"]; // fallback
+    for (const [key, val] of Object.entries(suggestions)) {
+      if (bt.includes(key) || key.includes(bt)) {
+        matched = val;
+        break;
+      }
+    }
+    // Also handle some common Indian business types
+    if (bt.includes("dhaba") || bt.includes("cafe") || bt.includes("food") || bt.includes("bakery") || bt.includes("sweet")) {
+      matched = suggestions["restaurant"];
+    } else if (bt.includes("doctor") || bt.includes("dental") || bt.includes("physio") || bt.includes("ayurved")) {
+      matched = suggestions["clinic"];
+    } else if (bt.includes("parlour") || bt.includes("parlor") || bt.includes("spa") || bt.includes("beauty")) {
+      matched = suggestions["salon"];
+    } else if (bt.includes("coaching") || bt.includes("tuition") || bt.includes("institute") || bt.includes("academy")) {
+      matched = suggestions["school"];
+    } else if (bt.includes("store") || bt.includes("mart") || bt.includes("wholesale") || bt.includes("retail")) {
+      matched = suggestions["shop"];
+    } else if (bt.includes("lodge") || bt.includes("resort") || bt.includes("guest") || bt.includes("homestay")) {
+      matched = suggestions["hotel"];
+    }
+
+    const introText = matched.intro;
+    const checklistMarkdown = matched.items.map(i => `  ${i}`).join("\n");
+    const fullMessage = `${introText}\n\n${checklistMarkdown}\n\nUpload a PDF or paste your website URL below — I'll scrape everything automatically!`;
+
     setConversationHistory((prev) => [
       ...prev,
-      { role: "assistant" as const, content: introText },
+      { role: "assistant" as const, content: fullMessage },
     ]);
     setChatMessages((prev) => [
       ...prev,
       {
         id: `ai-upload-intro-${Date.now()}`,
         role: "assistant" as const,
-        content: introText,
+        content: fullMessage,
         type: "text" as const,
       },
       {
@@ -496,17 +567,26 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          system: `You are an onboarding assistant helping a non-technical Indian business owner set up their AI voice agent. Your job is to ask them short, friendly questions one at a time — like a consultant would — to understand their business deeply enough to configure a voice agent for them.
+          system: `You are an onboarding assistant helping a non-technical Indian business owner set up their AI voice agent. Be warm, friendly, and efficient — like a helpful consultant who values their time.
 
-Ask questions in this order, one at a time, waiting for each answer:
-1. What is the name of your business?
-2. What kind of business is it? (restaurant, clinic, shop, etc.)
-3. What language do your customers usually speak with you?
-4. What are the top 3 things customers usually ask you about?
-5. How do you want the agent to greet customers?
-6. Is there anything the agent should never say or do?
+IMPORTANT RULES:
+- Keep every message under 3 sentences. Business owners are busy.
+- Ask at most 2 related questions per message.
+- Use simple English. No jargon.
+- If the user gives you multiple answers at once, acknowledge all of them and move on.
 
-After all 6 answers, FIRST output the JSON config block wrapped in <config></config> tags:
+FLOW (complete in 3-4 exchanges, NOT 6):
+
+STEP 1: "What's your business name and what kind of business is it? (e.g., restaurant, clinic, salon, shop)"
+→ This gets business_name + business_type in one go.
+
+STEP 2: "What language do most of your customers speak? And what are the top 2-3 things they usually ask about?"
+→ Gets primary_language + top_faqs together.
+
+STEP 3: "How should the agent greet callers? And is there anything it should never say or promise?"
+→ Gets greeting + restrictions.
+
+After all answers collected, output the config wrapped in <config></config> tags:
 <config>
 {
   "business_name": "...",
@@ -518,23 +598,35 @@ After all 6 answers, FIRST output the JSON config block wrapped in <config></con
 }
 </config>
 
-THEN, based on what you learned about their business, recommend relevant tools/integrations that would help their voice agent. Choose from these available connectors:
-- "calendar" — Google Calendar (for appointment-based businesses like clinics, salons, hospitals, consultants)
-- "whatsapp" — WhatsApp / Twilio (for customer notifications, order updates, confirmations)
-- "shopify" — Shopify / Catalog (for businesses selling products — shops, restaurants with menus, e-commerce)
-- "hubspot" — HubSpot / CRM (for businesses tracking leads and customer relationships)
+THEN recommend connectors. Based on the business type, pick the MOST relevant ones from:
+- "calendar" — Google Calendar (for clinics, salons, hospitals, consultants — anything with appointments)
+- "whatsapp" — WhatsApp / Twilio (for sending confirmations, reminders, order updates to customers)
+- "shopify" — Shopify / Catalog (for shops, restaurants, e-commerce — anything selling products)
+- "hubspot" — HubSpot / CRM (for tracking leads, customer info, follow-ups)
 
-Output your recommendations as a <tools> tag listing relevant tool IDs, like:
-<tools>calendar,whatsapp</tools>
+IMPORTANT: Do NOT auto-enable anything. Always list your recommendations clearly and ASK for confirmation.
 
-Then write a brief, friendly message like:
-"Based on your business, I'd recommend connecting Google Calendar for appointment booking and WhatsApp for customer notifications. Would you like to enable these?"
+Your message MUST follow this exact pattern:
+1. Output the hidden tag: <tools>calendar,whatsapp</tools> (with your recommended tools)
+2. Then write a clear message listing each recommendation with WHY it's useful for THEIR specific business. Example:
 
-If the user says yes/sure/okay to the tool suggestions, output:
-<enable_tools>calendar,whatsapp</enable_tools>
-with whatever tools they agreed to.
+"I'd recommend connecting these for [business name]:
 
-Keep every message under 2 sentences. Be warm and conversational. Use simple English. Never ask two questions at once.`,
+📅 **Google Calendar** — so customers can book appointments directly
+💬 **WhatsApp** — to send booking confirmations automatically
+
+Would you like me to connect these? You can say 'yes to all', or tell me which ones you want (e.g., 'just Calendar')."
+
+When the user confirms:
+- If they say "yes", "sure", "yes to all", "connect all", "haan", "sab laga do" → enable ALL recommended tools
+- If they pick specific ones (e.g., "just WhatsApp" or "only calendar") → enable only those
+- If they say "no", "not now", "skip" → skip and move to the upload step
+
+Output: <enable_tools>calendar,whatsapp</enable_tools> with ONLY the confirmed tools.
+
+After confirmation (or skip), move on to the knowledge upload step — do NOT keep asking about connectors.
+
+Never ask two unrelated questions at once. If user answers partially, ask only for what's missing.`,
           messages: newHistory,
         }),
       });
@@ -706,6 +798,8 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
   };
 
   // ── TALK PAGE STATE ───────────────────────────────────────────────────────────
+  const [agentId, setLocalAgentId] = useState<string | null>(null);
+  const { setAgentId, loadConnectors, connectors, activeCount } = useConnectors();
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
   const [isAgentLoading, setIsAgentLoading] = useState(false);
   const [micStatus, setMicStatus] = useState<
@@ -797,6 +891,10 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
       if (!response.ok) throw new Error("Failed");
       const data = await response.json();
       setAgentInfo(data);
+      const generatedId = agentId;
+      setLocalAgentId(generatedId);
+      setAgentId(generatedId); // update Zustand
+      loadConnectors(generatedId);
     } catch {
       showToast("Something went wrong. Try again.", "error");
     } finally {
@@ -1137,6 +1235,47 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
                 </button>
               </div>
             </div>
+
+            {/* Capability Badges */}
+            {activeCount > 0 && (
+              <div className="bg-[#111] border border-white/10 rounded-xl p-4">
+                <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-3 font-medium">
+                  Active Capabilities
+                </p>
+                <div className="flex flex-col gap-2">
+                  {connectors.google_calendar?.enabled && (
+                    <div className="flex items-center gap-2 text-xs text-zinc-300">
+                      <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                      Books appointments to Google Calendar
+                    </div>
+                  )}
+                  {connectors.whatsapp_twilio?.enabled && (
+                    <div className="flex items-center gap-2 text-xs text-zinc-300">
+                      <Send className="w-3.5 h-3.5 text-emerald-400" />
+                      Sends SMS/WhatsApp confirmations
+                    </div>
+                  )}
+                  {connectors.shopify_catalog?.enabled && (
+                    <div className="flex items-center gap-2 text-xs text-zinc-300">
+                      <ShoppingBag className="w-3.5 h-3.5 text-emerald-400" />
+                      Searches live inventory on Shopify
+                    </div>
+                  )}
+                  {connectors.hubspot_crm?.enabled && (
+                    <div className="flex items-center gap-2 text-xs text-zinc-300">
+                      <Database className="w-3.5 h-3.5 text-emerald-400" />
+                      Saves customer data to HubSpot CRM
+                    </div>
+                  )}
+                  {Object.keys(connectors).filter(k => k.startsWith('custom_') && connectors[k].enabled).map(key => (
+                    <div key={key} className="flex items-center gap-2 text-xs text-zinc-300">
+                      <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                      {(connectors[key].config as any)?.name || 'Custom Webhook Integration'}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Action buttons */}
             <div className="flex flex-col gap-3">
@@ -1591,226 +1730,15 @@ Keep every message under 2 sentences. Be warm and conversational. Use simple Eng
                   </form>
                 </div>
               </div>
+              <ConnectorsPanel />
 
-              {/* ── RIGHT PANEL: CONNECTORS & INTEGRATIONS ──────────────── */}
-              <div
-                id="connectors-panel"
-                className="hidden md:flex md:col-span-4 bg-white border border-slate-200 rounded-2xl shadow-sm flex-col h-[680px] overflow-hidden"
-              >
-                {/* Panel Header */}
-                <div className="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-4 shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-white/10 backdrop-blur flex items-center justify-center shrink-0">
-                      <Sliders className="w-4.5 h-4.5 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white tracking-tight">
-                        Connectors & Tools
-                      </h3>
-                      <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
-                        Integrate your business stack
-                      </p>
-                    </div>
-                  </div>
+              {/* Insights & Self-Improvement Panel */}
+              {activeAgentId && (
+                <div className="md:col-span-4">
+                  <InsightsPanel agentId={activeAgentId} />
                 </div>
+              )}
 
-                {/* Scrollable Connector Cards */}
-                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
-
-                  {/* ─── Google Calendar ────────────────────────────────────── */}
-                  <div className={`rounded-xl border transition-all duration-200 ${isCalendarConnected ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                    <div className="flex items-center justify-between px-4 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isCalendarConnected ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                          <Calendar className="w-4.5 h-4.5" />
-                        </div>
-                        <div>
-                          <p className="text-[13px] font-semibold text-slate-800">Google Calendar</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">Appointment booking & scheduling</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`w-1.5 h-1.5 rounded-full ${isCalendarConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`} />
-                        <button
-                          onClick={() => { setIsCalendarConnected(!isCalendarConnected); if (!isCalendarConnected) setShowConfigFor('calendar'); }}
-                          className={`relative w-10 h-[22px] rounded-full transition-colors duration-200 cursor-pointer ${isCalendarConnected ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                        >
-                          <span className={`absolute top-[3px] left-[3px] w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isCalendarConnected ? 'translate-x-[18px]' : ''}`} />
-                        </button>
-                      </div>
-                    </div>
-                    {/* Config Expand */}
-                    {showConfigFor === 'calendar' && isCalendarConnected && (
-                      <div className="px-4 pb-4 pt-1 border-t border-emerald-100">
-                        <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1.5">Calendar Email</label>
-                        <div className="flex gap-2">
-                          <input
-                            type="email"
-                            value={calendarEmail}
-                            onChange={(e) => setCalendarEmail(e.target.value)}
-                            placeholder="you@gmail.com"
-                            className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition-all"
-                          />
-                          <button
-                            onClick={() => { showToast("Google Calendar linked!", "success"); setShowConfigFor(null); }}
-                            className="px-3 py-2 text-[11px] font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors cursor-pointer"
-                          >
-                            Link
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ─── WhatsApp / Twilio ──────────────────────────────────── */}
-                  <div className={`rounded-xl border transition-all duration-200 ${isTwilioConnected ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                    <div className="flex items-center justify-between px-4 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isTwilioConnected ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                          <Send className="w-4.5 h-4.5" />
-                        </div>
-                        <div>
-                          <p className="text-[13px] font-semibold text-slate-800">WhatsApp / Twilio</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">SMS & WhatsApp notifications</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`w-1.5 h-1.5 rounded-full ${isTwilioConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`} />
-                        <button
-                          onClick={() => { setIsTwilioConnected(!isTwilioConnected); if (!isTwilioConnected) setShowConfigFor('twilio'); }}
-                          className={`relative w-10 h-[22px] rounded-full transition-colors duration-200 cursor-pointer ${isTwilioConnected ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                        >
-                          <span className={`absolute top-[3px] left-[3px] w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isTwilioConnected ? 'translate-x-[18px]' : ''}`} />
-                        </button>
-                      </div>
-                    </div>
-                    {showConfigFor === 'twilio' && isTwilioConnected && (
-                      <div className="px-4 pb-4 pt-1 border-t border-emerald-100">
-                        <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1.5">WhatsApp Business Number</label>
-                        <div className="flex gap-2">
-                          <input
-                            type="tel"
-                            value={twilioPhone}
-                            onChange={(e) => setTwilioPhone(e.target.value)}
-                            placeholder="+91 98765 43210"
-                            className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition-all"
-                          />
-                          <button
-                            onClick={() => { showToast("WhatsApp connected!", "success"); setShowConfigFor(null); }}
-                            className="px-3 py-2 text-[11px] font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors cursor-pointer"
-                          >
-                            Link
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ─── Shopify / Catalog ──────────────────────────────────── */}
-                  <div className={`rounded-xl border transition-all duration-200 ${isShopifyConnected ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                    <div className="flex items-center justify-between px-4 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isShopifyConnected ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                          <ShoppingBag className="w-4.5 h-4.5" />
-                        </div>
-                        <div>
-                          <p className="text-[13px] font-semibold text-slate-800">Shopify / Catalog</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">Sync products & inventory</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`w-1.5 h-1.5 rounded-full ${isShopifyConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`} />
-                        <button
-                          onClick={() => { setIsShopifyConnected(!isShopifyConnected); if (!isShopifyConnected) setShowConfigFor('shopify'); }}
-                          className={`relative w-10 h-[22px] rounded-full transition-colors duration-200 cursor-pointer ${isShopifyConnected ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                        >
-                          <span className={`absolute top-[3px] left-[3px] w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isShopifyConnected ? 'translate-x-[18px]' : ''}`} />
-                        </button>
-                      </div>
-                    </div>
-                    {showConfigFor === 'shopify' && isShopifyConnected && (
-                      <div className="px-4 pb-4 pt-1 border-t border-emerald-100">
-                        <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1.5">Shopify Store URL</label>
-                        <div className="flex gap-2">
-                          <input
-                            type="url"
-                            value={shopifyStoreUrl}
-                            onChange={(e) => setShopifyStoreUrl(e.target.value)}
-                            placeholder="your-store.myshopify.com"
-                            className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition-all"
-                          />
-                          <button
-                            onClick={() => { showToast("Shopify synced!", "success"); setShowConfigFor(null); }}
-                            className="px-3 py-2 text-[11px] font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors cursor-pointer"
-                          >
-                            Sync
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ─── HubSpot / CRM ─────────────────────────────────────── */}
-                  <div className={`rounded-xl border transition-all duration-200 ${isHubspotConnected ? 'border-emerald-200 bg-emerald-50/30' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                    <div className="flex items-center justify-between px-4 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${isHubspotConnected ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                          <Link className="w-4.5 h-4.5" />
-                        </div>
-                        <div>
-                          <p className="text-[13px] font-semibold text-slate-800">HubSpot / CRM</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">Sync customer contacts</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`w-1.5 h-1.5 rounded-full ${isHubspotConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-300'}`} />
-                        <button
-                          onClick={() => { setIsHubspotConnected(!isHubspotConnected); if (!isHubspotConnected) setShowConfigFor('hubspot'); }}
-                          className={`relative w-10 h-[22px] rounded-full transition-colors duration-200 cursor-pointer ${isHubspotConnected ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                        >
-                          <span className={`absolute top-[3px] left-[3px] w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${isHubspotConnected ? 'translate-x-[18px]' : ''}`} />
-                        </button>
-                      </div>
-                    </div>
-                    {showConfigFor === 'hubspot' && isHubspotConnected && (
-                      <div className="px-4 pb-4 pt-1 border-t border-emerald-100">
-                        <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1.5">HubSpot API Key</label>
-                        <div className="flex gap-2">
-                          <input
-                            type="password"
-                            value={hubspotApiKey}
-                            onChange={(e) => setHubspotApiKey(e.target.value)}
-                            placeholder="pat-na1-xxxxxxxx"
-                            className="flex-1 text-xs px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400 transition-all"
-                          />
-                          <button
-                            onClick={() => { showToast("HubSpot connected!", "success"); setShowConfigFor(null); }}
-                            className="px-3 py-2 text-[11px] font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors cursor-pointer"
-                          >
-                            Connect
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ─── Add More Connector CTA ────────────────────────────── */}
-                  <button className="w-full rounded-xl border-2 border-dashed border-slate-200 hover:border-slate-400 py-4 flex items-center justify-center gap-2 text-xs font-semibold text-slate-400 hover:text-slate-600 transition-all cursor-pointer group">
-                    <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
-                    Add Custom Integration
-                  </button>
-                </div>
-
-                {/* Bottom status bar */}
-                <div className="px-5 py-3.5 border-t border-slate-100 bg-slate-50/80 shrink-0">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-400">Active connectors</span>
-                    <span className="font-bold text-slate-700">
-                      {[isCalendarConnected, isTwilioConnected, isShopifyConnected, isHubspotConnected].filter(Boolean).length} / 4
-                    </span>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
 

@@ -12,4 +12,6 @@ pydantic
 pydantic-settings
 pypdf
 google-genai
-
+cryptography
+composio-core
+composio-openai

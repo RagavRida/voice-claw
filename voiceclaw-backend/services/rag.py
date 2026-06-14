@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import httpx
 from sqlalchemy import select
 from config import settings
@@ -121,6 +122,12 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
         # 3. Retrieve top matching document chunks from ChromaDB
         chunks = await vector_store.query_chunks(agent_id, query_vector, n_results=settings.RAG_TOP_K)
         context = "\n\n".join(chunks) if chunks else settings.RAG_NO_CONTEXT_MESSAGE
+
+        # Flag knowledge gap if no relevant chunks found
+        rag_context_found = bool(chunks)
+        if not chunks:
+            from services import insights as insights_svc
+            asyncio.create_task(insights_svc.flag_knowledge_gap(agent_id, query_text))
 
         # 4. Formulate System Prompt
         system_prompt = settings.RAG_SYSTEM_PROMPT_TEMPLATE.format(business_name=business_name)
