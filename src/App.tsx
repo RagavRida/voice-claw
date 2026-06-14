@@ -192,6 +192,13 @@ export default function App() {
 
   const [chatInput, setChatInput] = useState("");
   const [isAiTyping, setIsAiTyping] = useState(false);
+  const [isBuilderRecording, setIsBuilderRecording] = useState(false);
+  const builderMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const builderAudioChunksRef = useRef<Blob[]>([]);
+  const builderSilenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const builderAudioContextRef = useRef<AudioContext | null>(null);
+  const builderAnalyserRef = useRef<AnalyserNode | null>(null);
+  const builderMicrophoneStreamRef = useRef<MediaStream | null>(null);
   const [isConfigDone, setIsConfigDone] = useState(false);
   const [isMobileConfigExpanded, setIsMobileConfigExpanded] = useState(false);
 
@@ -685,6 +692,128 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
       showToast("I'm having trouble responding right now. Let me try again.", "error");
     } finally {
       setIsAiTyping(false);
+    }
+  };
+
+  // ── TALK AND BUILD (STT) LOGIC ─────────────────────────────────────────────
+  const stopBuilderRecording = async () => {
+    if (
+      builderMediaRecorderRef.current &&
+      builderMediaRecorderRef.current.state !== "inactive"
+    ) {
+      builderMediaRecorderRef.current.stop();
+    }
+    
+    if (builderSilenceTimerRef.current) {
+      clearTimeout(builderSilenceTimerRef.current);
+    }
+    
+    if (builderMicrophoneStreamRef.current) {
+      builderMicrophoneStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
+    
+    if (builderAudioContextRef.current) {
+      builderAudioContextRef.current.close();
+    }
+    
+    setIsBuilderRecording(false);
+  };
+
+  const handleToggleBuilderRecording = async () => {
+    if (isBuilderRecording) {
+      await stopBuilderRecording();
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      builderMicrophoneStreamRef.current = stream;
+      
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      builderMediaRecorderRef.current = mediaRecorder;
+      builderAudioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          builderAudioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(builderAudioChunksRef.current, { type: "audio/webm" });
+        setIsAiTyping(true);
+        try {
+          const formData = new FormData();
+          formData.append("file", audioBlob, "audio.webm");
+          formData.append("audio_format", "webm");
+          
+          const response = await fetch(`${API_BASE_URL}/api/stt`, {
+            method: "POST",
+            body: formData,
+          });
+          
+          if (!response.ok) throw new Error("STT failed");
+          
+          const result = await response.json();
+          if (result.transcript) {
+            setChatInput((prev) => (prev ? prev + " " + result.transcript : result.transcript));
+          }
+        } catch (err) {
+          console.error("Talk & Build transcription error:", err);
+          showToast("Transcription failed", "error");
+        } finally {
+          setIsAiTyping(false);
+        }
+      };
+
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      builderAudioContextRef.current = audioContext;
+      const analyser = audioContext.createAnalyser();
+      builderAnalyserRef.current = analyser;
+      analyser.fftSize = 512;
+      
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+      
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      
+      const checkSilence = () => {
+        if (!isBuilderRecording) return;
+        
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const averageVolume = sum / dataArray.length;
+        
+        if (averageVolume > 10) {
+          if (builderSilenceTimerRef.current) {
+            clearTimeout(builderSilenceTimerRef.current);
+            builderSilenceTimerRef.current = null;
+          }
+        } else {
+          if (!builderSilenceTimerRef.current && builderMediaRecorderRef.current?.state === "recording") {
+            builderSilenceTimerRef.current = setTimeout(() => {
+              stopBuilderRecording();
+            }, 1500);
+          }
+        }
+        
+        if (builderMediaRecorderRef.current?.state === "recording") {
+          requestAnimationFrame(checkSilence);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsBuilderRecording(true);
+      
+      checkSilence();
+      
+    } catch (err) {
+      console.error("Error accessing microphone for Talk & Build:", err);
+      showToast("Could not access microphone.", "error");
+      setIsBuilderRecording(false);
     }
   };
 
@@ -1806,15 +1935,30 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
                     }}
                     className="w-full flex gap-2"
                   >
-                    <input
-                      type="text"
-                      id="input-onboarding"
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      disabled={isAiTyping}
-                      placeholder="Type your response here..."
-                      className="flex-grow px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
-                    />
+                    <div className="flex-grow flex gap-2">
+                      <input
+                        type="text"
+                        id="input-onboarding"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        disabled={isAiTyping || isBuilderRecording}
+                        placeholder={isBuilderRecording ? "Listening..." : "Type your response here..."}
+                        className="flex-grow px-3.5 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleToggleBuilderRecording}
+                        disabled={isAiTyping}
+                        className={`p-3 rounded-xl transition-all cursor-pointer disabled:opacity-40 shrink-0 ${
+                          isBuilderRecording 
+                            ? "bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]" 
+                            : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                        title="Talk to Build"
+                      >
+                        <Mic className="w-4 h-4" />
+                      </button>
+                    </div>
                     <button
                       type="submit"
                       id="btn-onboarding-send"
