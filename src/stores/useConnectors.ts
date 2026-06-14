@@ -59,23 +59,23 @@ export const useConnectors = create<ConnectorsState>((set, get) => ({
   toggle: async (key) => {
     const { connectors, agentId } = get();
     const isCurrentlyEnabled = connectors[key]?.enabled || false;
+    const newEnabled = !isCurrentlyEnabled;
+    const config = connectors[key]?.config || {};
     
-    // For Custom Webhooks, we keep the old behavior
+    // Always update local state immediately
+    set((state) => {
+      const newCount = newEnabled ? state.activeCount + 1 : Math.max(0, state.activeCount - 1);
+      return {
+        connectors: {
+          ...state.connectors,
+          [key]: { ...state.connectors[key], enabled: newEnabled }
+        },
+        activeCount: newCount
+      };
+    });
+    
+    // Sync to backend if agentId is available and it's a custom connector
     if (key.startsWith('custom_') && agentId) {
-      const newEnabled = !isCurrentlyEnabled;
-      const config = connectors[key]?.config || {};
-      
-      set((state) => {
-        const newCount = newEnabled ? state.activeCount + 1 : state.activeCount - 1;
-        return {
-          connectors: {
-            ...state.connectors,
-            [key]: { ...state.connectors[key], enabled: newEnabled }
-          },
-          activeCount: newCount
-        };
-      });
-      
       try {
         await fetch(`http://localhost:8000/api/agent/${agentId}/connectors/custom`, {
           method: 'POST',
@@ -90,7 +90,21 @@ export const useConnectors = create<ConnectorsState>((set, get) => ({
 
   initiateConnection: async (key) => {
     const { agentId } = get();
-    if (!agentId) return;
+    
+    // Always toggle ON locally first so the UI responds immediately
+    set((state) => ({
+      connectors: {
+        ...state.connectors,
+        [key]: { ...state.connectors[key], enabled: true, last_status: 'pending' }
+      },
+      activeCount: state.activeCount + 1,
+    }));
+    
+    // If we have an agentId, try the real OAuth flow
+    if (!agentId) {
+      console.log(`Connector ${key} toggled ON locally (no agent yet — will sync later)`);
+      return;
+    }
     
     try {
       const res = await fetch(`http://localhost:8000/api/agent/${agentId}/connectors/connect`, {

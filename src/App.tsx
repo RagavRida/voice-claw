@@ -949,6 +949,8 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
         if (ev.data?.size > 0) recordedChunksRef.current.push(ev.data);
       };
       mr.onstop = async () => {
+        // Clear auto-stop timer
+        if ((mr as any)._autoStopTimer) clearTimeout((mr as any)._autoStopTimer);
         setMicStatus("Thinking...");
         const blob = new Blob(recordedChunksRef.current, {
           type: mr.mimeType || "audio/webm",
@@ -956,6 +958,14 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
         await processAudioFlow(blob);
       };
       mr.start();
+      // Auto-stop recording at 25 seconds (Sarvam STT has 30s limit)
+      (mr as any)._autoStopTimer = setTimeout(() => {
+        if (mr.state === "recording") {
+          mr.stop();
+          streamRef.current?.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+        }
+      }, 25000);
     } catch {
       showToast("Something went wrong. Try again.", "error");
       setMicStatus("Tap to speak");
@@ -966,6 +976,9 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
     if (e) e.preventDefault();
     if (mediaRecorderRef.current?.state === "recording")
       mediaRecorderRef.current.stop();
+    // Clear auto-stop timer
+    if ((mediaRecorderRef.current as any)?._autoStopTimer)
+      clearTimeout((mediaRecorderRef.current as any)._autoStopTimer);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   };
@@ -983,8 +996,24 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
         method: "POST",
         body: fd,
       });
-      if (!sttRes.ok) throw new Error("STT failed");
+      if (!sttRes.ok) {
+        const errData = await sttRes.json().catch(() => ({}));
+        const detail = errData?.detail?.detail || errData?.detail?.error || "";
+        if (detail.includes("duration exceeds")) {
+          showToast("Recording too long — please keep it under 25 seconds.", "error");
+        } else {
+          showToast("Couldn't understand the audio. Try speaking again.", "error");
+        }
+        setMicStatus("Tap to speak");
+        return;
+      }
       const { text, source_lang } = await sttRes.json();
+
+      if (!text || text.trim().length === 0) {
+        showToast("I didn't catch that. Try speaking a bit louder.", "error");
+        setMicStatus("Tap to speak");
+        return;
+      }
 
       // 2. Append user turn
       setChatTurns((prev) => [...prev, { role: "user", text, lang: source_lang }]);
