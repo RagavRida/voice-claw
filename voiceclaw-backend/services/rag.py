@@ -254,6 +254,9 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
             f"INFORMATION GATHERING & TOOLS: If the user's intent requires an action (e.g., booking a table, scheduling an appointment), "
             f"you MUST ask for all necessary details (like date, time, party size, or contact info) ONE question at a time. "
             f"Do NOT attempt to use an action tool until you have gathered all required parameters from the user.\n\n"
+            f"REJECTION HANDLING: If the customer explicitly denies an order, cancels a booking, or rejects a suggestion, "
+            f"you MUST immediately stop pushing the current action. Acknowledge their rejection politely, drop the topic, "
+            f"and offer a warm closing greeting or ask if there is anything else you can help with.\n\n"
         )
         
         if greeting:
