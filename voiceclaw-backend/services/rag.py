@@ -306,19 +306,13 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
         final_query = f"{query_text}\n\n[System Reminder: You MUST ONLY use the provided Context to answer. If the answer is not in the Context, say you don't know.]"
         messages.append({"role": "user", "content": final_query})
 
-        # 6. Route: Gemini → Ollama (local) → Groq → Sarvam
+        # 6. Route: Gemini → Groq → Ollama (local) → Sarvam
         if settings.GEMINI_API_KEY:
             try:
                 logger.info(f"Submitting RAG query via Gemini for agent {agent_id}")
                 return await _query_via_gemini(system_prompt, messages, query_text)
             except Exception as e:
                 logger.warning(f"Gemini RAG failed, falling back: {e}")
-
-        try:
-            logger.info(f"Submitting RAG query via Ollama/Gemma4 for agent {agent_id}")
-            return await _query_via_ollama(system_prompt, messages)
-        except Exception as e:
-            logger.warning(f"Ollama RAG failed, falling back: {e}")
 
         if settings.GROQ_API_KEY:
             groq_key = settings.GROQ_API_KEY  # noqa: F841
@@ -327,6 +321,12 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
                 return await _query_via_groq(system_prompt, messages)
             except Exception as e:
                 logger.warning(f"Groq RAG failed, falling back: {e}")
+
+        try:
+            logger.info(f"Submitting RAG query via Ollama/Gemma4 for agent {agent_id}")
+            return await _query_via_ollama(system_prompt, messages)
+        except Exception as e:
+            logger.warning(f"Ollama RAG failed, falling back: {e}")
 
         logger.info(f"Submitting RAG query via Sarvam Chat completions for agent {agent_id}")
         return await _query_via_sarvam(system_prompt, messages)
