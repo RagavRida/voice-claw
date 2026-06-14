@@ -214,7 +214,10 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
             raise RAGError(f"Agent with ID {agent_id} not found in database.")
 
         business_name = agent.business_name
+        business_type = agent.business_type
+        greeting = agent.greeting
         restrictions = agent.restrictions
+        top_faqs = agent.top_faqs or []
 
     try:
         # 2. Embed query_text
@@ -240,9 +243,32 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
             asyncio.create_task(insights_svc.flag_knowledge_gap(agent_id, query_text))
 
         # 4. Formulate System Prompt
-        system_prompt = settings.RAG_SYSTEM_PROMPT_TEMPLATE.format(business_name=business_name)
+        # Replace the generic prompt with a fully dynamic one tailored to the agent's specific role
+        system_prompt = (
+            f"You are a specialized AI voice assistant acting as a {business_type} representative for {business_name}. "
+            f"Your primary goal is to help users according to your role as a {business_type}.\n\n"
+        )
+        
+        if greeting:
+            system_prompt += f"GREETING INSTRUCTION: {greeting}\n\n"
+            
+        system_prompt += (
+            "CRITICAL RULE: You MUST ONLY answer questions using the exact 'Context' provided below, "
+            "or the FAQs provided below. If the user's question cannot be answered using this information, "
+            "you MUST politely refuse to answer and state that you do not have that information. "
+            "Under NO CIRCUMSTANCES should you use your general outside knowledge to answer questions about topics not found here. "
+            "Be concise — max 2 sentences.\n\n"
+        )
+
         if restrictions:
-            system_prompt += f" Restrictions: {restrictions}"
+            system_prompt += f"RESTRICTIONS: {restrictions}\n\n"
+            
+        if top_faqs:
+            system_prompt += "FREQUENTLY ASKED QUESTIONS (You can use these to answer):\n"
+            for faq in top_faqs:
+                if isinstance(faq, dict) and "q" in faq and "a" in faq:
+                    system_prompt += f"Q: {faq['q']}\nA: {faq['a']}\n"
+            system_prompt += "\n"
 
         # 4a. Inject multilingual response instructions
         lang_name_map = {
