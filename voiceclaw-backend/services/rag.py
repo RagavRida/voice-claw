@@ -12,6 +12,31 @@ logger = logging.getLogger("rag_service")
 class RAGError(Exception):
     pass
 
+OLLAMA_BASE_URL = "http://localhost:11434"
+OLLAMA_MODEL = "gemma4:latest"
+
+async def _query_via_ollama(system_prompt: str, messages: list[dict]) -> str:
+    """Use local Ollama (Gemma 4) for chat completion — no rate limits."""
+    url = f"{OLLAMA_BASE_URL}/api/chat"
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": messages,
+        "stream": False,
+        "options": {
+            "temperature": settings.RAG_TEMPERATURE,
+            "num_predict": settings.RAG_MAX_TOKENS,
+        }
+    }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(url, json=payload)
+        if response.status_code != 200:
+            raise RAGError(f"Ollama API error {response.status_code}: {response.text[:300]}")
+        data = response.json()
+        answer = data.get("message", {}).get("content", "")
+        if not answer:
+            raise RAGError(f"Empty response from Ollama. Raw: {data}")
+        return answer.strip()
+
 async def _query_via_groq(system_prompt: str, messages: list[dict]) -> str:
     """Use Groq API (OpenAI-compatible) for chat completion with retry."""
     groq_key = settings.GROQ_API_KEY
@@ -211,7 +236,13 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
         final_query = f"{query_text}\n\n[System Reminder: You MUST ONLY use the provided Context to answer. If the answer is not in the Context, say you don't know.]"
         messages.append({"role": "user", "content": final_query})
 
-        # 6. Route to the appropriate AI provider (Groq first → Gemini → Sarvam)
+        # 6. Route: Ollama (local) → Groq → Gemini → Sarvam
+        try:
+            logger.info(f"Submitting RAG query via Ollama/Gemma4 for agent {agent_id}")
+            return await _query_via_ollama(system_prompt, messages)
+        except Exception as e:
+            logger.warning(f"Ollama RAG failed, falling back: {e}")
+
         if settings.GROQ_API_KEY:
             groq_key = settings.GROQ_API_KEY  # noqa: F841
             try:
