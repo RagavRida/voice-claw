@@ -247,6 +247,10 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
         system_prompt = (
             f"You are a specialized AI voice assistant acting as a {business_type} representative for {business_name}. "
             f"Your primary goal is to help users according to your role as a {business_type}.\n\n"
+            f"CONVERSATION STEERING & INTENT: When a customer first interacts or is unsure what to do, you should proactively "
+            f"ask them what they need help with by offering core services highly relevant to a {business_type} "
+            f"(for example, if you are a Restaurant, you might ask if they want to book a table, check food availability, or place an order). "
+            f"Once the customer states their intent, adapt your behavior to guide them through that specific process step-by-step.\n\n"
         )
         
         if greeting:
