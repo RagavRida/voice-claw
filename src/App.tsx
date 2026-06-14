@@ -33,6 +33,7 @@ import {
   Database,
   Zap,
   Code,
+  Terminal,
 } from "lucide-react";
 import { ConnectorsPanel } from './components/ConnectorsPanel';
 import { InsightsPanel } from './components/InsightsPanel';
@@ -1366,6 +1367,18 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
               >
                 <Code className="w-4 h-4" />
                 Get Embed Code
+              </button>
+              <button
+                id="btn-curl-agent"
+                onClick={() => {
+                  const host = window.location.origin;
+                  copyToClipboard(`curl -s ${host}/inject.sh | bash -s ${activeAgentId} index.html`);
+                  showToast("cURL command copied to clipboard!", "success");
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 py-3.5 px-4 rounded-lg text-sm font-medium transition-all cursor-pointer"
+              >
+                <Terminal className="w-4 h-4" />
+                Copy cURL Deploy Command
               </button>
             </div>
 
