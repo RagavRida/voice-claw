@@ -927,7 +927,14 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
       source.buffer = audioBuffer;
       source.connect(audioCtx.destination);
       activeAudioSourceRef.current = source;
-      source.onended = () => setMicStatus("Tap to speak");
+      source.onended = () => {
+        // Auto-restart mic for continuous conversation
+        setMicStatus("Tap to speak");
+        setTimeout(() => {
+          // Simulate a mic toggle to restart listening
+          handleMicToggle({ preventDefault: () => {} } as any);
+        }, 500);
+      };
       source.start(0);
     } catch {
       showToast("Audio playback failed.", "error");
