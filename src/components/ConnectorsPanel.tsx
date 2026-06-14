@@ -142,10 +142,10 @@ export function ConnectorsPanel() {
         )}
 
         {renderConnectorRow(
-          'whatsapp_twilio', 
-          <Send className="w-4.5 h-4.5" />, 
-          'WhatsApp / Twilio', 
-          'SMS & WhatsApp notifications'
+          'telegram', 
+          <MessageCircle className="w-4.5 h-4.5" />, 
+          'Telegram', 
+          'Send Telegram messages & notifications'
         )}
 
         {renderConnectorRow(

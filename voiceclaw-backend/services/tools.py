@@ -72,8 +72,8 @@ async def execute_google_calendar(agent_id: str, task: str, time_iso: str) -> st
     # Mock implementation fallback
     return f"MOCK: Booked '{task}' for {time_iso}."
 
-async def execute_twilio_whatsapp(agent_id: str, task: str, recipient: str) -> str:
-    enabled, config = await get_connector_config(agent_id, "whatsapp_twilio")
+async def execute_telegram(agent_id: str, task: str, recipient: str) -> str:
+    enabled, config = await get_connector_config(agent_id, "telegram")
     
     if enabled and config.get("account_sid") and config.get("auth_token") and config.get("from_number"):
         try:
@@ -82,13 +82,14 @@ async def execute_twilio_whatsapp(agent_id: str, task: str, recipient: str) -> s
                 # Mock real HTTP call
                 pass
                 
-            await update_connector_status(agent_id, "whatsapp_twilio", "success")
-            return f"WhatsApp message sent to {recipient}."
+            await update_connector_status(agent_id, "telegram", "success")
+            return f"Telegram message sent to {recipient}."
         except Exception as e:
             logger.error(f"Twilio API failed: {e}")
-            await update_connector_status(agent_id, "whatsapp_twilio", "failed")
+            await update_connector_status(agent_id, "telegram", "failed")
+            return f"Telegram message failed: {e}"
             
-    return f"MOCK: Sent WhatsApp message to {recipient}."
+    return f"MOCK: Sent Telegram message to {recipient}."
 
 async def execute_shopify_catalog(agent_id: str, task: str, product: str) -> str:
     enabled, config = await get_connector_config(agent_id, "shopify_catalog")
@@ -170,9 +171,9 @@ async def dispatch_tool_call(agent_id: str, action_tag: str) -> None:
             time_iso = root.attrib.get("time", "")
             await execute_google_calendar(agent_id, task, time_iso)
             
-        elif tool_type == "twilio":
+        elif tool_type == "telegram":
             recipient = root.attrib.get("recipient", "")
-            await execute_twilio_whatsapp(agent_id, task, recipient)
+            await execute_telegram(agent_id, task, recipient)
             
         elif tool_type == "shopify":
             product = root.attrib.get("product", "")

@@ -28,7 +28,7 @@ MCP_API_KEY = settings.COMPOSIO_API_KEY
 # Map our internal connector keys to Composio toolkit slugs
 TOOLKIT_MAP = {
     "google_calendar": "googlecalendar",
-    "whatsapp_twilio": "twilio",
+    "telegram": "telegram",
     "hubspot_crm": "hubspot",
     "shopify_catalog": "shopify",
 }
@@ -228,7 +228,7 @@ async def get_tools_for_agent(agent_id: str) -> list:
     for toolkit in enabled_toolkits:
         use_case_map = {
             "googlecalendar": "manage google calendar events, find free slots, create events",
-            "twilio": "send SMS or WhatsApp messages via twilio",
+            "telegram": "send Telegram messages",
             "hubspot": "manage hubspot contacts and deals",
             "shopify": "list and search shopify products",
         }

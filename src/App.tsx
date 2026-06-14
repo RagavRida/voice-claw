@@ -616,17 +616,17 @@ After all answers collected, output the config wrapped in <config></config> tags
 
 THEN recommend connectors. Based on the business type, pick the MOST relevant ones from:
 - "calendar" — Google Calendar (for clinics, salons, hospitals, consultants — anything with appointments)
-- "whatsapp" — WhatsApp / Twilio (for sending confirmations, reminders, order updates to customers)
+- "telegram" — Telegram (for sending confirmations, reminders, order updates to customers)
 - "shopify" — Shopify / Catalog (for shops, restaurants, e-commerce — anything selling products)
 - "hubspot" — HubSpot / CRM (for tracking leads, customer info, follow-ups)
 
 Your message MUST follow this exact pattern:
-1. Output the hidden tag: <tools>calendar,whatsapp</tools> (with your recommended tools)
+1. Output the hidden tag: <tools>calendar,telegram</tools> (with your recommended tools)
 2. Then write a brief message listing each recommendation and directing them to the Connectors Panel. Example:
 
 "I'd recommend connecting these for [business name]:
 📅 **Google Calendar** — so customers can book appointments directly
-💬 **WhatsApp** — to send booking confirmations automatically
+💬 **Telegram** — to send booking confirmations automatically
 
 You can enable these anytime using the **Connectors & Tools** panel on the right. Now, let's get your agent trained on your business knowledge!"
 
@@ -650,7 +650,7 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
         const suggested = toolsSuggestMatch[1].split(",").map((t: string) => t.trim().toLowerCase());
         // Visually highlight suggested tools (but don't fully connect yet — wait for user confirmation)
         if (suggested.includes("calendar")) { setIsCalendarConnected(false); setShowConfigFor("calendar"); }
-        if (suggested.includes("whatsapp")) { setIsTwilioConnected(false); setShowConfigFor("twilio"); }
+        if (suggested.includes("telegram")) { setIsTwilioConnected(false); setShowConfigFor("telegram"); }
         if (suggested.includes("shopify")) { setIsShopifyConnected(false); setShowConfigFor("shopify"); }
         if (suggested.includes("hubspot")) { setIsHubspotConnected(false); setShowConfigFor("hubspot"); }
       }
@@ -1984,7 +1984,7 @@ Never ask two unrelated questions at once. If user answers partially, ask only f
                   <div className="flex-1 min-w-0">
                     {/* Connector label */}
                     <p className="text-[10px] font-bold uppercase tracking-widest text-white/40 mb-1">
-                      {activeActionCard.type === "calendar" ? "Google Calendar" : activeActionCard.type === "twilio" ? "WhatsApp" : activeActionCard.type === "shopify" ? "Shopify" : activeActionCard.type === "hubspot" ? "HubSpot" : "Action"}
+                      {activeActionCard.type === "calendar" ? "Google Calendar" : activeActionCard.type === "telegram" ? "Telegram" : activeActionCard.type === "shopify" ? "Shopify" : activeActionCard.type === "hubspot" ? "HubSpot" : "Action"}
                     </p>
                     {/* Task description */}
                     <p className="text-sm font-semibold text-white/90 leading-snug">

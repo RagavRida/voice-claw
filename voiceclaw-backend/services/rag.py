@@ -387,14 +387,14 @@ def _build_tool_instructions(enabled_connectors: list[str]) -> str:
             "  Response: Sure, I am booking an appointment for you tomorrow at 4 PM!\n"
             "  <action type=\"calendar\" task=\"Book appointment\" time=\"2026-06-15T16:00:00\" />\n"
         ),
-        "twilio": (
-            "TOOL: WhatsApp / Twilio\n"
-            "PURPOSE: Send WhatsApp messages, SMS notifications, or confirmations\n"
+        "telegram": (
+            "TOOL: Telegram\n"
+            "PURPOSE: Send Telegram messages or confirmations\n"
             "TRIGGER: User asks to send a message, notify someone, or send confirmation\n"
-            "FORMAT: <action type=\"twilio\" task=\"BRIEF_DESCRIPTION\" recipient=\"PHONE_OR_NAME\" />\n"
+            "FORMAT: <action type=\"telegram\" task=\"BRIEF_DESCRIPTION\" recipient=\"PHONE_OR_NAME\" />\n"
             "EXAMPLE: User says 'Send a confirmation to the patient'\n"
-            "  Response: I will send a WhatsApp confirmation right away!\n"
-            "  <action type=\"twilio\" task=\"Send confirmation\" recipient=\"patient\" />\n"
+            "  Response: I will send a Telegram confirmation right away!\n"
+            "  <action type=\"telegram\" task=\"Send confirmation\" recipient=\"patient\" />\n"
         ),
         "shopify": (
             "TOOL: Shopify / Inventory\n"

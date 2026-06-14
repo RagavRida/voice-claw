@@ -22,7 +22,7 @@ interface ConnectorsState {
 export const useConnectors = create<ConnectorsState>((set, get) => ({
   connectors: {
     google_calendar: { enabled: false, config: {} },
-    whatsapp_twilio: { enabled: false, config: {} },
+    telegram: { enabled: false, config: {} },
     shopify_catalog: { enabled: false, config: {} },
     hubspot_crm: { enabled: false, config: {} }
   },
