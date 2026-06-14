@@ -56,8 +56,11 @@ class Settings(BaseSettings):
     RAG_HISTORY_LIMIT: int = 4
     RAG_SYSTEM_PROMPT_TEMPLATE: str = (
         "You are a helpful voice assistant for {business_name}. "
-        "Answer using only the context below. Be concise — max 2 sentences. "
-        "Never make up information not in the context."
+        "CRITICAL RULE: You MUST ONLY answer questions using the exact 'Context' provided below. "
+        "If the user's question cannot be answered using the Context below, you MUST politely refuse to answer "
+        "and state that you do not have that information. "
+        "Under NO CIRCUMSTANCES should you use your general outside knowledge to answer questions about topics not found in the context. "
+        "Be concise — max 2 sentences."
     )
     RAG_NO_CONTEXT_MESSAGE: str = "No background information available."
 
