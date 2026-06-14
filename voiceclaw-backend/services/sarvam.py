@@ -141,8 +141,22 @@ async def text_to_speech(
         speech_sample_rate: Audio sample rate in Hz.
         enable_cached_responses: Cache identical requests (beta).
     """
-    if speaker is None:
-        speaker = settings.SARVAM_TTS_SPEAKER
+    if speaker is None or speaker == settings.SARVAM_TTS_SPEAKER:
+        # Dynamically adapt the voice character to the user's detected language/accent
+        # All Sarvam voices support all languages, but assigning specific voices
+        # to specific regions gives a distinct personality for each accent.
+        accent_speaker_map = {
+            "hi-IN": "priya",   # Hindi: Warm, friendly (default)
+            "te-IN": "ritu",    # Telugu: Calm, professional
+            "ta-IN": "neha",    # Tamil: Conversational
+            "kn-IN": "tanya",   # Kannada: Young energetic
+            "ml-IN": "suhani",  # Malayalam: Young energetic
+            "bn-IN": "shreya",  # Bengali: News-anchor / narration
+            "mr-IN": "pooja",   # Marathi: Warm, friendly
+            "gu-IN": "niharika" # Gujarati: Young energetic
+        }
+        speaker = accent_speaker_map.get(target_language_code, settings.SARVAM_TTS_SPEAKER)
+        
     if pace is None:
         pace = settings.SARVAM_TTS_PACE
 
