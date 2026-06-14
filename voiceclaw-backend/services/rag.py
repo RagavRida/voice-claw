@@ -76,7 +76,7 @@ async def _query_via_gemini(system_prompt: str, messages: list[dict], query_text
 
 async def _query_via_sarvam(system_prompt: str, messages: list[dict]) -> str:
     """Fallback: use Sarvam Chat Completion API."""
-    url = f"{settings.SARVAM_BASE_URL}/chat/completions"
+    url = f"{settings.SARVAM_BASE_URL}/v1/chat/completions"
     headers = {
         "API-Subscription-Key": settings.SARVAM_API_KEY,
         "Content-Type": "application/json"
@@ -181,6 +181,9 @@ async def query_knowledge_base(agent_id: str, query_text: str, history: list[dic
         history_messages = []
         for turn in history[-settings.RAG_HISTORY_LIMIT:]:
             role = turn.get("role", "user")
+            if role not in ["system", "user", "assistant", "tool"]:
+                role = "assistant" if role in ["agent", "ai"] else "user"
+                
             content = turn.get("content") or turn.get("text") or ""
             history_messages.append({"role": role, "content": content})
 
